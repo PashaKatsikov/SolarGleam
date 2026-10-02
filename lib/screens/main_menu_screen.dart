@@ -19,8 +19,8 @@ class MainMenuScreen extends StatefulWidget {
 }
 
 class _MainMenuScreenState extends State<MainMenuScreen> {
-  static const _privacyUrl = 'https://solarrgleam.com/privacy-policy.html';
-  static const _supportUrl = 'https://solarrgleam.com/support.html';
+  static const _privacyUrl = 'https://solar-gleam.com/privacy-policy';
+  static const _supportUrl = 'https://solar-gleam.com/support';
   static const _logoSource = Size(512, 512);
   static const _logoRect = Rect.fromLTWH(9, 159, 494, 199);
 

@@ -243,9 +243,13 @@
 			files = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/../rust/solar_math/Cargo.toml",
+				"$(SRCROOT)/../rust/solar_math/src/sealed.bin",
+				"$(SRCROOT)/../rust/solar_math/tools/build_ios.sh",
 			);
 			name = "Build Solar Math";
 			outputPaths = (
+				"$(SRCROOT)/../rust/solar_math/build/$(PLATFORM_NAME)/libsolar_math.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

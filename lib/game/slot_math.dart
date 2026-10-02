@@ -1,7 +1,7 @@
-import 'dart:math';
-
 import '../assets.dart';
+import 'native_math.dart';
 
+/// Declaration order is the symbol id shared with the Rust math core.
 enum SlotSymbol {
   ten,
   jack,
@@ -17,109 +17,27 @@ enum SlotSymbol {
   bonus,
 }
 
+/// Presentation only. Weights and pays live in the sealed Rust core.
 class SymbolDef {
-  const SymbolDef({
-    required this.name,
-    required this.asset,
-    required this.weight,
-    required this.pay3,
-    required this.pay4,
-  });
+  const SymbolDef({required this.name, required this.asset});
 
   final String name;
   final String asset;
-  final int weight;
-  final int pay3;
-  final int pay4;
-
-  int linePay(int count) => count >= 4 ? pay4 : pay3;
 }
 
 const symbolDefs = <SlotSymbol, SymbolDef>{
-  SlotSymbol.ten: SymbolDef(
-    name: '10',
-    asset: GleamAssets.ten,
-    weight: 22,
-    pay3: 14,
-    pay4: 40,
-  ),
-  SlotSymbol.jack: SymbolDef(
-    name: 'J',
-    asset: GleamAssets.jack,
-    weight: 18,
-    pay3: 16,
-    pay4: 50,
-  ),
-  SlotSymbol.queen: SymbolDef(
-    name: 'Q',
-    asset: GleamAssets.queen,
-    weight: 16,
-    pay3: 18,
-    pay4: 60,
-  ),
-  SlotSymbol.king: SymbolDef(
-    name: 'K',
-    asset: GleamAssets.king,
-    weight: 14,
-    pay3: 22,
-    pay4: 70,
-  ),
-  SlotSymbol.ace: SymbolDef(
-    name: 'A',
-    asset: GleamAssets.ace,
-    weight: 12,
-    pay3: 28,
-    pay4: 90,
-  ),
-  SlotSymbol.star: SymbolDef(
-    name: 'Solar Star',
-    asset: GleamAssets.solarStar,
-    weight: 7,
-    pay3: 40,
-    pay4: 140,
-  ),
-  SlotSymbol.fireball: SymbolDef(
-    name: 'Fireball',
-    asset: GleamAssets.fireball,
-    weight: 6,
-    pay3: 55,
-    pay4: 200,
-  ),
-  SlotSymbol.chest: SymbolDef(
-    name: 'Chest',
-    asset: GleamAssets.chest,
-    weight: 4,
-    pay3: 80,
-    pay4: 300,
-  ),
-  SlotSymbol.crown: SymbolDef(
-    name: 'Crown',
-    asset: GleamAssets.crown,
-    weight: 3,
-    pay3: 130,
-    pay4: 500,
-  ),
-  SlotSymbol.solar: SymbolDef(
-    name: 'Solar',
-    asset: GleamAssets.solar,
-    weight: 2,
-    pay3: 210,
-    pay4: 800,
-  ),
-  SlotSymbol.wild: SymbolDef(
-    name: 'Wild',
-    asset: GleamAssets.wild,
-    weight: 3,
-    pay3: 280,
-    pay4: 1000,
-  ),
-  SlotSymbol.bonus: SymbolDef(
-    name: 'Bonus',
-    asset: GleamAssets.bonus,
-    weight: 2,
-    pay3: 0,
-    pay4: 0,
-  ),
+  SlotSymbol.ten: SymbolDef(name: '10', asset: GleamAssets.ten),
+  SlotSymbol.jack: SymbolDef(name: 'J', asset: GleamAssets.jack),
+  SlotSymbol.queen: SymbolDef(name: 'Q', asset: GleamAssets.queen),
+  SlotSymbol.king: SymbolDef(name: 'K', asset: GleamAssets.king),
+  SlotSymbol.ace: SymbolDef(name: 'A', asset: GleamAssets.ace),
+  SlotSymbol.star: SymbolDef(name: 'Solar Star', asset: GleamAssets.solarStar),
+  SlotSymbol.fireball: SymbolDef(name: 'Fireball', asset: GleamAssets.fireball),
+  SlotSymbol.chest: SymbolDef(name: 'Chest', asset: GleamAssets.chest),
+  SlotSymbol.crown: SymbolDef(name: 'Crown', asset: GleamAssets.crown),
+  SlotSymbol.solar: SymbolDef(name: 'Solar', asset: GleamAssets.solar),
+  SlotSymbol.wild: SymbolDef(name: 'Wild', asset: GleamAssets.wild),
+  SlotSymbol.bonus: SymbolDef(name: 'Bonus', asset: GleamAssets.bonus),
 };
 
 const paytableOrder = <SlotSymbol>[
@@ -137,43 +55,25 @@ const paytableOrder = <SlotSymbol>[
   SlotSymbol.ten,
 ];
 
-final List<SlotSymbol> symbolBag = [
-  for (final entry in symbolDefs.entries)
-    for (var i = 0; i < entry.value.weight; i++) entry.key,
-];
-
+/// Board shape. The math core is sealed for this layout.
 const reelCount = 4;
 const rowCount = 4;
-const paylineCount = 20;
 
-const paylines = <List<int>>[
-  [0, 0, 0, 0],
-  [1, 1, 1, 1],
-  [2, 2, 2, 2],
-  [3, 3, 3, 3],
-  [0, 1, 2, 3],
-  [3, 2, 1, 0],
-  [0, 1, 1, 0],
-  [3, 2, 2, 3],
-  [1, 0, 0, 1],
-  [2, 3, 3, 2],
-  [1, 2, 2, 1],
-  [2, 1, 1, 2],
-  [0, 0, 1, 2],
-  [3, 3, 2, 1],
-  [1, 1, 2, 3],
-  [2, 2, 1, 0],
-  [0, 1, 0, 1],
-  [3, 2, 3, 2],
-  [1, 2, 1, 2],
-  [2, 1, 2, 1],
-];
+/// Rule numbers read from the Rust core.
+class SlotRules {
+  const SlotRules._();
 
-const scatterBetMultiplier3 = 5;
-const scatterBetMultiplier4 = 20;
-const freeSpinsFor3 = 8;
-const freeSpinsFor4 = 12;
-const freeSpinLineMultiplier = 2;
+  static int get paylineCount => NativeMath.instance.constant(0);
+  static int get scatterMultiplier3 => NativeMath.instance.constant(1);
+  static int get scatterMultiplier4 => NativeMath.instance.constant(2);
+  static int get freeSpinsFor3 => NativeMath.instance.constant(3);
+  static int get freeSpinsFor4 => NativeMath.instance.constant(4);
+  static int get freeSpinLineMultiplier => NativeMath.instance.constant(5);
+
+  /// Pay for [count] of a kind on one line at the given per-line bet.
+  static int linePay(SlotSymbol symbol, int count, int lineBet) =>
+      NativeMath.instance.linePay(symbol.index, count, lineBet);
+}
 
 class Cell {
   const Cell(this.reel, this.row);
@@ -210,6 +110,7 @@ class SpinOutcome {
     required this.scatterWin,
     required this.freeSpinsAwarded,
     required this.totalWin,
+    required this.tier,
     required this.winningCells,
   });
 
@@ -218,20 +119,26 @@ class SpinOutcome {
   final int scatterWin;
   final int freeSpinsAwarded;
   final int totalWin;
+
+  /// 0 plain, 1 big win, 2 solar win. Thresholds are decided by the core.
+  final int tier;
   final Set<Cell> winningCells;
 }
 
+/// Dart face of the Rust math core: every roll and payout is computed there.
 class SlotEngine {
-  SlotEngine({Random? random}) : _random = random ?? Random();
+  SlotEngine() : _math = NativeMath.instance;
 
-  final Random _random;
-
-  SlotSymbol roll() => symbolBag[_random.nextInt(symbolBag.length)];
+  final NativeMath _math;
 
   List<List<SlotSymbol>> spinGrid() {
+    final flat = _math.spin();
     return List.generate(
       reelCount,
-      (_) => List.generate(rowCount, (_) => roll()),
+      (reel) => List.generate(
+        rowCount,
+        (row) => SlotSymbol.values[flat[reel * rowCount + row]],
+      ),
     );
   }
 
@@ -240,87 +147,35 @@ class SlotEngine {
     required int totalBet,
     required bool freeSpin,
   }) {
-    final lineBet = totalBet ~/ paylineCount;
-    final wins = <LineWin>[];
-    final cells = <Cell>{};
-    var lineTotal = 0;
+    final flat = [
+      for (var reel = 0; reel < reelCount; reel++)
+        for (var row = 0; row < rowCount; row++) grid[reel][row].index,
+    ];
+    final words = _math.evaluate(flat, totalBet, freeSpin);
 
-    for (var lineIndex = 0; lineIndex < paylines.length; lineIndex++) {
-      final rows = paylines[lineIndex];
-      final resolved = _resolveLine(grid, rows);
-      if (resolved == null) continue;
-      var amount =
-          symbolDefs[resolved.symbol]!.linePay(resolved.count) * lineBet;
-      if (freeSpin) amount *= freeSpinLineMultiplier;
-      lineTotal += amount;
-      wins.add(
+    final mask = words[5];
+    final cells = <Cell>{
+      for (var reel = 0; reel < reelCount; reel++)
+        for (var row = 0; row < rowCount; row++)
+          if ((mask >> (reel * rowCount + row)) & 1 == 1) Cell(reel, row),
+    };
+    final wins = <LineWin>[
+      for (var i = 0; i < words[6]; i++)
         LineWin(
-          line: lineIndex + 1,
-          symbol: resolved.symbol,
-          count: resolved.count,
-          amount: amount,
+          line: words[7 + i * 4],
+          symbol: SlotSymbol.values[words[8 + i * 4]],
+          count: words[9 + i * 4],
+          amount: words[10 + i * 4],
         ),
-      );
-      for (var reel = 0; reel < resolved.count; reel++) {
-        cells.add(Cell(reel, rows[reel]));
-      }
-    }
-
-    var scatterCount = 0;
-    final scatterCells = <Cell>[];
-    for (var reel = 0; reel < reelCount; reel++) {
-      for (var row = 0; row < rowCount; row++) {
-        if (grid[reel][row] == SlotSymbol.bonus) {
-          scatterCount++;
-          scatterCells.add(Cell(reel, row));
-        }
-      }
-    }
-
-    var scatterWin = 0;
-    var freeSpinsAwarded = 0;
-    if (scatterCount >= 3) {
-      final top = scatterCount >= 4;
-      scatterWin =
-          totalBet * (top ? scatterBetMultiplier4 : scatterBetMultiplier3);
-      freeSpinsAwarded = top ? freeSpinsFor4 : freeSpinsFor3;
-      cells.addAll(scatterCells);
-    }
-
+    ];
     return SpinOutcome(
       lineWins: wins,
-      scatterCount: scatterCount,
-      scatterWin: scatterWin,
-      freeSpinsAwarded: freeSpinsAwarded,
-      totalWin: lineTotal + scatterWin,
+      scatterCount: words[2],
+      scatterWin: words[1],
+      freeSpinsAwarded: words[3],
+      totalWin: words[0],
+      tier: words[4],
       winningCells: cells,
     );
   }
-
-  _Resolved? _resolveLine(List<List<SlotSymbol>> grid, List<int> rows) {
-    SlotSymbol? target;
-    var count = 0;
-    for (var reel = 0; reel < reelCount; reel++) {
-      final symbol = grid[reel][rows[reel]];
-      if (symbol == SlotSymbol.bonus) break;
-      if (symbol == SlotSymbol.wild) {
-        count++;
-        continue;
-      }
-      if (target == null || symbol == target) {
-        target ??= symbol;
-        count++;
-        continue;
-      }
-      break;
-    }
-    if (count < 3) return null;
-    return _Resolved(target ?? SlotSymbol.wild, count);
-  }
-}
-
-class _Resolved {
-  const _Resolved(this.symbol, this.count);
-  final SlotSymbol symbol;
-  final int count;
 }

@@ -191,7 +191,7 @@ class SlotController extends ChangeNotifier {
     celebrationTitle = _celebration(outcome);
     message = _message(outcome);
     phase = SpinPhase.presenting;
-    if (outcome.totalWin >= _chargedBet * 15) {
+    if (outcome.tier >= 1) {
       GleamSettings.instance.heavy();
     }
     notifyListeners();
@@ -199,7 +199,7 @@ class SlotController extends ChangeNotifier {
 
     final wait = outcome.totalWin <= 0
         ? 380
-        : outcome.freeSpinsAwarded > 0 || outcome.totalWin >= _chargedBet * 15
+        : outcome.freeSpinsAwarded > 0 || outcome.tier >= 1
         ? 1900
         : 1300;
     _presentTimer?.cancel();
@@ -226,8 +226,8 @@ class SlotController extends ChangeNotifier {
 
   String? _celebration(SpinOutcome outcome) {
     if (outcome.freeSpinsAwarded > 0) return 'FREE SPINS';
-    if (outcome.totalWin >= _chargedBet * 30) return 'SOLAR WIN';
-    if (outcome.totalWin >= _chargedBet * 15) return 'BIG WIN';
+    if (outcome.tier >= 2) return 'SOLAR WIN';
+    if (outcome.tier >= 1) return 'BIG WIN';
     return null;
   }
 

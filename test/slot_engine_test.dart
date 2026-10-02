@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:solar_gleam/game/cheat_spins.dart';
 import 'package:solar_gleam/game/slot_math.dart';
 
+// These tests run against the Rust core through FFI. Build the host library
+// first:  cd rust/solar_math && cargo build --release
 void main() {
   const bet = 200;
 
@@ -9,11 +11,27 @@ void main() {
     return List.generate(reelCount, (_) => List.filled(rowCount, symbol));
   }
 
-  test('payline count matches the engine', () {
-    expect(paylines, hasLength(paylineCount));
-    for (final line in paylines) {
-      expect(line, hasLength(reelCount));
+  test('the core reports its rules', () {
+    expect(SlotRules.paylineCount, 20);
+    expect(SlotRules.freeSpinsFor3, 8);
+    expect(SlotRules.freeSpinsFor4, 12);
+    expect(SlotRules.scatterMultiplier3, 5);
+    expect(SlotRules.scatterMultiplier4, 20);
+    expect(SlotRules.freeSpinLineMultiplier, 2);
+  });
+
+  test('random grids stay on the board and use every symbol over time', () {
+    final engine = SlotEngine();
+    final seen = <SlotSymbol>{};
+    for (var i = 0; i < 400; i++) {
+      final grid = engine.spinGrid();
+      expect(grid, hasLength(reelCount));
+      for (final reel in grid) {
+        expect(reel, hasLength(rowCount));
+        seen.addAll(reel);
+      }
     }
+    expect(seen, containsAll(SlotSymbol.values));
   });
 
   test('wild completes a crown line from the left', () {
@@ -30,8 +48,9 @@ void main() {
     expect(crown, isNotEmpty);
     expect(
       crown.first.amount,
-      symbolDefs[SlotSymbol.crown]!.pay4 * (bet ~/ paylineCount),
+      SlotRules.linePay(SlotSymbol.crown, 4, bet ~/ SlotRules.paylineCount),
     );
+    expect(crown.first.amount, greaterThan(0));
   });
 
   test('bonus does not substitute on a payline', () {
@@ -58,8 +77,8 @@ void main() {
 
     final outcome = SlotEngine().evaluate(grid, totalBet: bet, freeSpin: false);
     expect(outcome.scatterCount, 3);
-    expect(outcome.freeSpinsAwarded, freeSpinsFor3);
-    expect(outcome.scatterWin, bet * scatterBetMultiplier3);
+    expect(outcome.freeSpinsAwarded, SlotRules.freeSpinsFor3);
+    expect(outcome.scatterWin, bet * SlotRules.scatterMultiplier3);
     expect(outcome.winningCells, contains(const Cell(0, 0)));
   });
 
@@ -83,6 +102,7 @@ void main() {
       freeSpin: false,
     );
     expect(board.totalWin, greaterThan(bet * 30));
+    expect(board.tier, 2);
 
     final bonus = engine.evaluate(
       cheatGrid(CheatSpin.bonus4),
@@ -90,13 +110,13 @@ void main() {
       freeSpin: false,
     );
     expect(bonus.scatterCount, 4);
-    expect(bonus.freeSpinsAwarded, freeSpinsFor4);
+    expect(bonus.freeSpinsAwarded, SlotRules.freeSpinsFor4);
   });
 
   test('free spins double the line win', () {
     final grid = gridOf(SlotSymbol.queen);
     final base = SlotEngine().evaluate(grid, totalBet: bet, freeSpin: false);
     final free = SlotEngine().evaluate(grid, totalBet: bet, freeSpin: true);
-    expect(free.totalWin, base.totalWin * freeSpinLineMultiplier);
+    expect(free.totalWin, base.totalWin * SlotRules.freeSpinLineMultiplier);
   });
 }

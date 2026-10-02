@@ -1,0 +1,4 @@
+/target
+/build
+# Plaintext economy. Only the sealed blob (src/sealed.bin) is committed.
+/spec

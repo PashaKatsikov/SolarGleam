@@ -1,0 +1,31 @@
+[package]
+name = "solar_math"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Sealed slot math core for Solar Gleam."
+
+[lib]
+name = "solar_math"
+# staticlib: linked into the iOS Runner. cdylib: host library for Dart tests.
+# rlib: Rust unit tests.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# Enables the sealing tool (cargo run --features seal --bin seal).
+seal = []
+
+[[bin]]
+name = "seal"
+path = "src/bin/seal.rs"
+required-features = ["seal"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false
+overflow-checks = false
+incremental = false

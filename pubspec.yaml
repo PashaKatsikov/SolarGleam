@@ -37,9 +37,12 @@ dependencies:
   webview_flutter: ^4.14.1
   webview_flutter_wkwebview: ^3.27.0
   shared_preferences: ^2.5.5
+  ffi: ^2.2.0
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

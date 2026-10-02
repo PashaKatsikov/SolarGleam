@@ -18,7 +18,8 @@ class PaytableSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final height = MediaQuery.sizeOf(context).height;
-    final lineBet = bet ~/ paylineCount;
+    final paylines = SlotRules.paylineCount;
+    final lineBet = bet ~/ paylines;
     return _Panel(
       title: title,
       onClose: onClose,
@@ -29,7 +30,7 @@ class PaytableSheet extends StatelessWidget {
           children: [
             Text(
               'Pays for a bet of ${formatGleam(bet)} gleam. '
-              'Four reels, four rows, 20 paylines. Wins run from the left, '
+              'Four reels, four rows, $paylines paylines. Wins run from the left, '
               'three or more of a kind. Wild replaces every symbol except Bonus. '
               'Gleam is virtual and has no cash value.',
               style: cinzel(
@@ -44,9 +45,12 @@ class PaytableSheet extends StatelessWidget {
             for (final symbol in paytableOrder) _row(symbol, lineBet),
             const SizedBox(height: 8),
             Text(
-              '3 Bonus symbols anywhere award 8 free spins and 5× the bet. '
-              '4 or more award 12 free spins and 20× the bet. '
-              'Line wins during free spins are doubled.',
+              '3 Bonus symbols anywhere award ${SlotRules.freeSpinsFor3} free '
+              'spins and ${SlotRules.scatterMultiplier3}× the bet. '
+              '4 or more award ${SlotRules.freeSpinsFor4} free spins and '
+              '${SlotRules.scatterMultiplier4}× the bet. '
+              'Line wins during free spins are '
+              '${SlotRules.freeSpinLineMultiplier == 2 ? 'doubled' : 'multiplied by ${SlotRules.freeSpinLineMultiplier}'}.',
               style: cinzel(
                 13,
                 GleamColors.goldLight,
@@ -64,8 +68,10 @@ class PaytableSheet extends StatelessWidget {
   Widget _row(SlotSymbol symbol, int lineBet) {
     final def = symbolDefs[symbol]!;
     final detail = symbol == SlotSymbol.bonus
-        ? '3 · 8 free spins\n4 · 12 free spins'
-        : '3 · ${formatGleam(def.pay3 * lineBet)}\n4 · ${formatGleam(def.pay4 * lineBet)}';
+        ? '3 · ${SlotRules.freeSpinsFor3} free spins\n'
+              '4 · ${SlotRules.freeSpinsFor4} free spins'
+        : '3 · ${formatGleam(SlotRules.linePay(symbol, 3, lineBet))}\n'
+              '4 · ${formatGleam(SlotRules.linePay(symbol, 4, lineBet))}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(

@@ -167,7 +167,7 @@ class _ReelColumnState extends State<_ReelColumn>
     _steps = steps;
     _strip = [
       for (var i = 0; i < steps; i++)
-        symbolBag[random.nextInt(symbolBag.length)],
+        SlotSymbol.values[random.nextInt(SlotSymbol.values.length)],
       ...widget.landing,
       widget.landing.last,
     ];

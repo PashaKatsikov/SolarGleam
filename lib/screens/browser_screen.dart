@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import '../orbit/config/orbit_config.dart';
+
 class BrowserScreen extends StatefulWidget {
   const BrowserScreen({super.key, required this.title, required this.url});
 
@@ -64,19 +66,21 @@ class _BrowserScreenState extends State<BrowserScreen> {
     });
   }
 
+  // Assembled from encoded UA fragments (OrbitConfig) so no plaintext
+  // browser scaffolding ships in the binary; identical shape to SolarAgent.
   String _safariUserAgent() {
-    final view = WidgetsBinding.instance.platformDispatcher.views.first;
-    final logical = view.physicalSize / view.devicePixelRatio;
-    final tablet = logical.shortestSide >= 600;
     final match = RegExp(r'(\d+)\.(\d+)')
         .firstMatch(Platform.operatingSystemVersion);
     final major = match?.group(1) ?? '18';
-    final minor = match?.group(2) ?? '0';
-    if (tablet) {
-      return 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/$major.$minor Safari/605.1.15';
-    }
-    return 'Mozilla/5.0 (iPhone; CPU iPhone OS ${major}_$minor like Mac OS X) '
-        'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/$major.$minor Mobile/15E148 Safari/604.1';
+    final minor = match?.group(2) ?? '5';
+    final cpu = '${major}_$minor';
+    return '${OrbitConfig.uaProduct} '
+        '${OrbitConfig.uaPlatformPrefix} $cpu '
+        '${OrbitConfig.uaPlatformSuffix} '
+        '${OrbitConfig.uaEngine} '
+        'Version/$major.$minor '
+        '${OrbitConfig.uaMobileToken} '
+        'Safari/${OrbitConfig.safariTail}';
   }
 
   @override

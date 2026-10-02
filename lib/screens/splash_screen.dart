@@ -1,14 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../assets.dart';
 import '../game/gleam_settings.dart';
+import '../orbit/core/relay_models.dart';
+import '../orbit/orbit_router.dart';
+import '../orbit/pages/no_signal_page.dart';
+import '../orbit/pages/notify_gate.dart';
+import '../orbit/pages/portal_view.dart';
 import '../theme/gleam_theme.dart';
 import '../widgets/loading_backdrop.dart';
 import 'main_menu_screen.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, this.router});
+
+  final OrbitRouter? router;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -17,11 +26,28 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   double _progress = 0;
   var _entering = false;
+  GleamStop? _stop;
+  bool _assetsReady = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _resolveStop();
+  }
+
+  Future<void> _resolveStop() async {
+    final router = widget.router;
+    if (router == null) {
+      _stop = const NativeStop();
+      return;
+    }
+    try {
+      _stop = await router.decide(onProgress: (_) {});
+    } catch (_) {
+      _stop = const NativeStop();
+    }
+    if (mounted) _enter();
   }
 
   Future<void> _load() async {
@@ -40,21 +66,72 @@ class _SplashScreenState extends State<SplashScreen> {
       await Future<void>.delayed(minimum - elapsed);
     }
     if (!mounted) return;
-    await _enter();
+    _assetsReady = true;
+    _enter();
   }
 
   Future<void> _enter() async {
-    if (_entering) return;
+    // Route only once both the loading work and the routing decision finish.
+    if (_entering || !_assetsReady || _stop == null) return;
     _entering = true;
+    final stop = _stop!;
+    final router = widget.router;
+
+    if (stop is PortalStop && router != null) {
+      await _openPortal(stop, router);
+      return;
+    }
+    if (stop is OfflineStop && router != null) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => NoSignalPage(
+            sensor: router.sensor,
+            retryBuilder: (_) => SplashScreen(router: router),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // NativeStop / gate disabled → the white slot game.
     try {
       await SystemChrome.setPreferredOrientations(gameOrientations);
-    } catch (_) {
-      // Orientation locks are unavailable outside a device shell.
-    }
+    } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const MainMenuScreen()),
     );
+  }
+
+  Future<void> _openPortal(PortalStop stop, OrbitRouter router) async {
+    Widget portalBuilder(BuildContext _) => PortalView(
+      url: stop.url,
+      coldLaunch: stop.coldLaunch,
+      vault: router.vault,
+      sensor: router.sensor,
+      push: router.push,
+      agent: router.agent,
+    );
+
+    if (router.vault.shouldShowPushInvite &&
+        await router.push.canOfferPermission()) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => NotifyGate(
+            vault: router.vault,
+            push: router.push,
+            nextBuilder: portalBuilder,
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute<void>(builder: portalBuilder));
   }
 
   @override

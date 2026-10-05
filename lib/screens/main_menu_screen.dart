@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../assets.dart';
 import '../game/gleam_settings.dart';
@@ -8,7 +9,6 @@ import '../theme/gleam_theme.dart';
 import '../widgets/image_slice.dart';
 import '../widgets/loading_backdrop.dart';
 import '../widgets/overlays.dart';
-import 'browser_screen.dart';
 import 'game_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
@@ -34,12 +34,18 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     GleamSettings.instance.load();
   }
 
-  Future<void> _openBrowser(String title, String url) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => BrowserScreen(title: title, url: url),
-      ),
+  /// Opens the page in an in-app Safari sheet (SFSafariViewController), so
+  /// the app itself ships no WKWebView.
+  Future<void> _openPage(String url) async {
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.inAppBrowserView,
     );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the page. Try again.')),
+      );
+    }
   }
 
   @override
@@ -119,8 +125,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           if (_settings)
             _SettingsSheet(
               onClose: () => setState(() => _settings = false),
-              onPrivacy: () => _openBrowser('Privacy Policy', _privacyUrl),
-              onSupport: () => _openBrowser('Support', _supportUrl),
+              onPrivacy: () => _openPage(_privacyUrl),
+              onSupport: () => _openPage(_supportUrl),
             ),
         ],
       ),

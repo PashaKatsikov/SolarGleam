@@ -1,14 +1,14 @@
 //! Solar Gleam math core. The C interface uses short opaque names on purpose.
 //!
-//! sg_k0  initialise and verify the sealed data      -> 1 on success
+//! sg_k0  initialise and verify the tables           -> 1 on success
 //! sg_g1  random grid                                -> cell count or 0
 //! sg_e2  evaluate a grid                            -> words written or 0
 //! sg_p3  pay for `count` of a kind on one line
 //! sg_c4  rule constants
 
-pub mod cipher;
 pub mod engine;
 pub mod rng;
+pub mod tables;
 pub mod vault;
 
 use std::sync::OnceLock;

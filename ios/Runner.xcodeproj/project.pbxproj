@@ -244,7 +244,7 @@
 			);
 			inputPaths = (
 				"$(SRCROOT)/../rust/solar_math/Cargo.toml",
-				"$(SRCROOT)/../rust/solar_math/src/sealed.bin",
+				"$(SRCROOT)/../rust/solar_math/src/tables.rs",
 				"$(SRCROOT)/../rust/solar_math/tools/build_ios.sh",
 			);
 			name = "Build Solar Math";

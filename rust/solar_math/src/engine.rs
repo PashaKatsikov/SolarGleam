@@ -1,4 +1,4 @@
-//! Reel generation and win evaluation, driven entirely by the sealed vault.
+//! Reel generation and win evaluation, driven entirely by the vault tables.
 
 use crate::vault::{Misc, Vault};
 

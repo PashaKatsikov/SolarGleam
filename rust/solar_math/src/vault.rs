@@ -1,15 +1,11 @@
-//! Opens the sealed economy blob. Nothing readable is stored in the binary:
-//! the blob is encrypted, symbol indices are shuffled inside it, and every
-//! decoded number is held XOR-masked with a key chosen at start-up.
+//! Decodes the economy tables once at start-up. Every decoded number is held
+//! XOR-masked with a key chosen at start-up, and symbol indices are shuffled
+//! so the engine never works with the ids Dart sees.
 
-use crate::cipher::{self, Stream};
 use crate::rng;
-
-static SEALED: &[u8] = include_bytes!("sealed.bin");
+use crate::tables::{self as t, dec};
 
 pub const MAX_SYMBOLS: usize = 32;
-pub const MAX_LINES: usize = 40;
-pub const MAX_REELS: usize = 8;
 
 const SLOT_WEIGHT: u32 = 0;
 const SLOT_PAY3: u32 = 64;
@@ -44,20 +40,6 @@ pub enum Misc {
     FreeSpinMultiplier = 6,
     TierBig = 7,
     TierSolar = 8,
-}
-
-struct Reader<'a> {
-    data: &'a [u8],
-    at: usize,
-}
-
-impl Reader<'_> {
-    fn word(&mut self) -> Option<u32> {
-        let end = self.at.checked_add(4)?;
-        let chunk = self.data.get(self.at..end)?;
-        self.at = end;
-        Some(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-    }
 }
 
 impl Vault {
@@ -125,78 +107,57 @@ impl Vault {
 }
 
 pub fn open() -> Option<Vault> {
-    if SEALED.len() < 16 + 8 {
-        return None;
-    }
-    let mut nonce = [0u8; 16];
-    nonce.copy_from_slice(&SEALED[..16]);
-    let key = cipher::master();
-    let mut body = SEALED[16..].to_vec();
-    Stream::new(&key, &nonce).apply(&mut body);
-
-    let split = body.len().checked_sub(8)?;
-    let (payload, stored) = body.split_at(split);
-    let mut raw = [0u8; 8];
-    raw.copy_from_slice(stored);
-    if cipher::tag(payload, &key) != u64::from_le_bytes(raw) {
+    let n = t::SYMBOLS;
+    let (reels, rows, line_count) = (t::REELS, t::ROWS, t::LINES);
+    if n == 0 || n > MAX_SYMBOLS || reels * rows > 32 {
         return None;
     }
 
-    let mut rd = Reader {
-        data: payload,
-        at: 0,
-    };
-    let n = rd.word()? as usize;
-    if n == 0 || n > MAX_SYMBOLS {
-        return None;
-    }
-    let mut weights = Vec::with_capacity(n);
-    let mut pays3 = Vec::with_capacity(n);
-    let mut pays4 = Vec::with_capacity(n);
-    for _ in 0..n {
-        weights.push(rd.word()?);
-        pays3.push(rd.word()?);
-        pays4.push(rd.word()?);
-    }
     let mut to_internal = [0u8; MAX_SYMBOLS];
     let mut to_dart = [0u8; MAX_SYMBOLS];
+    let mut seen = [false; MAX_SYMBOLS];
     for dart in 0..n {
-        let internal = rd.word()? as usize;
-        if internal >= n {
+        let internal = dec(t::SHUFFLE[dart], t::BASE_SHUFFLE + dart as u32) as usize;
+        if internal >= n || seen[internal] {
             return None;
         }
+        seen[internal] = true;
         to_internal[dart] = internal as u8;
         to_dart[internal] = dart as u8;
     }
-    let wild = rd.word()?;
-    let bonus = rd.word()?;
-    let line_count = rd.word()? as usize;
-    let reels = rd.word()? as usize;
-    let rows = rd.word()? as usize;
-    if line_count == 0
-        || line_count > MAX_LINES
-        || reels == 0
-        || reels > MAX_REELS
-        || rows == 0
-        || reels * rows > 32
-    {
-        return None;
+
+    // Tables are listed in Dart order; the vault stores them by internal code.
+    let mut weights = vec![0u32; n];
+    let mut pays3 = vec![0u32; n];
+    let mut pays4 = vec![0u32; n];
+    for dart in 0..n {
+        let internal = to_internal[dart] as usize;
+        weights[internal] = dec(t::WEIGHT[dart], t::BASE_WEIGHT + dart as u32);
+        pays3[internal] = dec(t::PAY3[dart], t::BASE_PAY3 + dart as u32);
+        pays4[internal] = dec(t::PAY4[dart], t::BASE_PAY4 + dart as u32);
     }
+
     let mut lines = Vec::with_capacity(line_count * reels);
-    for _ in 0..line_count * reels {
-        let row = rd.word()?;
+    for (i, v) in t::LINE_ROWS.iter().enumerate() {
+        let row = dec(*v, t::BASE_LINE + i as u32);
         if row as usize >= rows {
             return None;
         }
         lines.push(row);
     }
-    let scatter3 = rd.word()?;
-    let scatter4 = rd.word()?;
-    let fs3 = rd.word()?;
-    let fs4 = rd.word()?;
-    let fs_mult = rd.word()?;
-    let tier_big = rd.word()?;
-    let tier_solar = rd.word()?;
+
+    let rule = |i: usize| dec(t::MISC[i], t::BASE_MISC + i as u32);
+    let misc = [
+        to_internal[t::WILD_DART] as u32,
+        to_internal[t::BONUS_DART] as u32,
+        rule(0),
+        rule(1),
+        rule(2),
+        rule(3),
+        rule(4),
+        rule(5),
+        rule(6),
+    ];
 
     let seed = rng::word() | 1;
     let mut vault = Vault {
@@ -237,9 +198,6 @@ pub fn open() -> Option<Vault> {
         let locked = vault.lock(*v, SLOT_LINE + i as u32);
         vault.lines.push(locked);
     }
-    let misc = [
-        wild, bonus, scatter3, scatter4, fs3, fs4, fs_mult, tier_big, tier_solar,
-    ];
     for (i, v) in misc.iter().enumerate() {
         vault.misc[i] = vault.lock(*v, SLOT_MISC + i as u32);
     }

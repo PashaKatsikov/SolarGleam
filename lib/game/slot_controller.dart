@@ -18,6 +18,7 @@ class SlotController extends ChangeNotifier {
   static const startingGleam = 10000;
   static const _balanceKey = 'gleam_balance';
   static const _betKey = 'gleam_bet_index';
+  static const _freeSpinsKey = 'gleam_free_spins';
 
   final SlotEngine engine;
 
@@ -39,9 +40,7 @@ class SlotController extends ChangeNotifier {
   bool _busy = false;
   bool _disposed = false;
   bool _wasFree = false;
-  bool _holdAfterSpin = false;
   int _chargedBet = bets[1];
-  List<List<SlotSymbol>>? _forcedGrid;
   Timer? _presentTimer;
   Timer? _watchdog;
 
@@ -55,6 +54,8 @@ class SlotController extends ChangeNotifier {
       balance = prefs.getInt(_balanceKey) ?? startingGleam;
       final storedBet = prefs.getInt(_betKey) ?? betIndex;
       betIndex = storedBet.clamp(0, bets.length - 1);
+      freeSpins = (prefs.getInt(_freeSpinsKey) ?? 0).clamp(0, 999);
+      if (freeSpins > 0) message = 'Free spins left: $freeSpins';
       if (balance < bets.first && freeSpins == 0) {
         balance = startingGleam;
       }
@@ -68,6 +69,7 @@ class SlotController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_balanceKey, balance);
     await prefs.setInt(_betKey, betIndex);
+    await prefs.setInt(_freeSpinsKey, freeSpins);
   }
 
   void changeBet(int direction) {
@@ -113,16 +115,6 @@ class SlotController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void playForced(List<List<SlotSymbol>> forced) {
-    if (_disposed || phase == SpinPhase.spinning) return;
-    _forcedGrid = [for (final reel in forced) List<SlotSymbol>.from(reel)];
-    _holdAfterSpin = true;
-    autoplay = false;
-    needsRefill = false;
-    if (balance < bet) balance = startingGleam;
-    onSpinPressed();
-  }
-
   void onSpinPressed() {
     if (phase == SpinPhase.spinning) {
       if (!rush) {
@@ -157,9 +149,7 @@ class SlotController extends ChangeNotifier {
     } else {
       balance -= bet;
     }
-    final forced = _forcedGrid;
-    _forcedGrid = null;
-    grid = forced ?? engine.spinGrid();
+    grid = engine.spinGrid();
     winningCells = {};
     shownWin = 0;
     celebrationTitle = null;
@@ -215,10 +205,6 @@ class SlotController extends ChangeNotifier {
     _busy = false;
     notifyListeners();
     if (!continuePlay || paused) return;
-    if (_holdAfterSpin) {
-      _holdAfterSpin = false;
-      return;
-    }
     if (freeSpins > 0 || autoplay) {
       onSpinPressed();
     }

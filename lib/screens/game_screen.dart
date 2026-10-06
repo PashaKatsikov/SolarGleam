@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../assets.dart';
-import '../game/cheat_spins.dart';
 import '../game/slot_controller.dart';
 import '../theme/gleam_theme.dart';
 import '../widgets/image_slice.dart';
@@ -28,7 +27,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   static const _logoRect = Rect.fromLTWH(9, 159, 494, 199);
 
   final _controller = SlotController();
-  bool _cheatOpen = false;
 
   @override
   void initState() {
@@ -68,16 +66,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     Navigator.of(context).pop();
   }
 
-  void _openCheat() {
-    if (!cheatMenuEnabled || _controller.spinning) return;
-    setState(() => _cheatOpen = true);
-  }
-
-  void _pickCheat(CheatSpin spin) {
-    setState(() => _cheatOpen = false);
-    _controller.playForced(cheatGrid(spin));
-  }
-
   @override
   Widget build(BuildContext context) {
     if (MediaQuery.orientationOf(context) == Orientation.landscape) {
@@ -101,17 +89,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               children: [
                 const _Background(),
                 SafeArea(
-                  child: _Playfield(
-                    controller: _controller,
-                    onBack: _leave,
-                    onBalanceTap: cheatMenuEnabled ? _openCheat : null,
-                  ),
+                  child: _Playfield(controller: _controller, onBack: _leave),
                 ),
-                if (cheatMenuEnabled && _cheatOpen)
-                  CheatMenu(
-                    onPick: _pickCheat,
-                    onClose: () => setState(() => _cheatOpen = false),
-                  ),
                 if (_controller.needsRefill)
                   RefillSheet(
                     onRestore: _controller.refill,
@@ -162,15 +141,10 @@ class _Background extends StatelessWidget {
 }
 
 class _Playfield extends StatelessWidget {
-  const _Playfield({
-    required this.controller,
-    required this.onBack,
-    this.onBalanceTap,
-  });
+  const _Playfield({required this.controller, required this.onBack});
 
   final SlotController controller;
   final VoidCallback onBack;
-  final VoidCallback? onBalanceTap;
 
   @override
   Widget build(BuildContext context) {
@@ -210,11 +184,7 @@ class _Playfield extends StatelessWidget {
               children: [
                 SizedBox(
                   height: hudH,
-                  child: _Hud(
-                    controller: controller,
-                    onBack: onBack,
-                    onBalanceTap: onBalanceTap,
-                  ),
+                  child: _Hud(controller: controller, onBack: onBack),
                 ),
                 if (controller.freeSpins > 0)
                   SizedBox(
@@ -411,15 +381,10 @@ class _Playfield extends StatelessWidget {
 }
 
 class _Hud extends StatelessWidget {
-  const _Hud({
-    required this.controller,
-    required this.onBack,
-    this.onBalanceTap,
-  });
+  const _Hud({required this.controller, required this.onBack});
 
   final SlotController controller;
   final VoidCallback onBack;
-  final VoidCallback? onBalanceTap;
 
   @override
   Widget build(BuildContext context) {
@@ -438,7 +403,6 @@ class _Hud extends StatelessWidget {
           child: _Plaque(
             label: 'BALANCE',
             value: formatGleam(controller.balance),
-            onTap: onBalanceTap,
           ),
         ),
         const SizedBox(width: 8),
@@ -451,46 +415,39 @@ class _Hud extends StatelessWidget {
 }
 
 class _Plaque extends StatelessWidget {
-  const _Plaque({required this.label, required this.value, this.onTap});
+  const _Plaque({required this.label, required this.value});
 
   final String label;
   final String value;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: GleamColors.plaque,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: GleamColors.gold, width: 1.6),
-          boxShadow: const [
-            BoxShadow(color: Color(0x55F0A020), blurRadius: 12),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: cinzel(
-                    18,
-                    GleamColors.gold,
-                    weight: 700,
-                    letterSpacing: 1.2,
-                  ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: GleamColors.plaque,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: GleamColors.gold, width: 1.6),
+        boxShadow: const [BoxShadow(color: Color(0x55F0A020), blurRadius: 12)],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: cinzel(
+                  18,
+                  GleamColors.gold,
+                  weight: 700,
+                  letterSpacing: 1.2,
                 ),
-                const SizedBox(height: 4),
-                Text(value, style: rajdhani(28, GleamColors.ivory)),
-              ],
-            ),
+              ),
+              const SizedBox(height: 4),
+              Text(value, style: rajdhani(28, GleamColors.ivory)),
+            ],
           ),
         ),
       ),

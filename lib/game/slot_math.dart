@@ -17,7 +17,7 @@ enum SlotSymbol {
   bonus,
 }
 
-/// Presentation only. Weights and pays live in the sealed Rust core.
+/// Presentation only. Weights and pays live in the Rust core.
 class SymbolDef {
   const SymbolDef({required this.name, required this.asset});
 
@@ -55,7 +55,7 @@ const paytableOrder = <SlotSymbol>[
   SlotSymbol.ten,
 ];
 
-/// Board shape. The math core is sealed for this layout.
+/// Board shape. The math core is built for this layout.
 const reelCount = 4;
 const rowCount = 4;
 

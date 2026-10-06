@@ -23,7 +23,7 @@ fn set(grid: &mut [u8], reel: usize, row: usize, symbol: u8) {
 }
 
 #[test]
-fn sealed_core_opens() {
+fn core_opens() {
     assert_eq!(sg_k0(), 1);
     let vault = core().expect("vault");
     assert_eq!(vault.line_count, 20);

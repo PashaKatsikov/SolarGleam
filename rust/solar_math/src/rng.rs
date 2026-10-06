@@ -28,23 +28,25 @@ mod sys {
 
     static STATE: AtomicU64 = AtomicU64::new(0);
 
+    fn seed() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0x1234_5678_9ABC_DEF1)
+            | 1
+    }
+
     fn next() -> u64 {
-        let mut cur = STATE.load(Ordering::Relaxed);
-        if cur == 0 {
-            cur = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(0x1234_5678_9ABC_DEF1)
-                | 1;
-        }
+        let mut expected = STATE.load(Ordering::Relaxed);
         loop {
-            let mut x = cur;
+            // A zero state means "not seeded yet"; xorshift would stay at zero forever.
+            let mut x = if expected == 0 { seed() } else { expected };
             x ^= x << 13;
             x ^= x >> 7;
             x ^= x << 17;
-            match STATE.compare_exchange(cur, x, Ordering::Relaxed, Ordering::Relaxed) {
+            match STATE.compare_exchange(expected, x, Ordering::Relaxed, Ordering::Relaxed) {
                 Ok(_) => return x.wrapping_mul(0x2545_F491_4F6C_DD1D),
-                Err(seen) => cur = seen,
+                Err(seen) => expected = seen,
             }
         }
     }

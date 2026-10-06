@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:solar_gleam/game/cheat_spins.dart';
 import 'package:solar_gleam/game/slot_math.dart';
 
 // These tests run against the Rust core through FFI. Build the host library
@@ -82,13 +81,13 @@ void main() {
     expect(outcome.winningCells, contains(const Cell(0, 0)));
   });
 
-  test('cheat grids land the requested win', () {
+  test('a solar line, a full solar board and four bonuses pay out', () {
     final engine = SlotEngine();
-    final solar = engine.evaluate(
-      cheatGrid(CheatSpin.solarLine),
-      totalBet: bet,
-      freeSpin: false,
-    );
+    final line = gridOf(SlotSymbol.ten);
+    for (var reel = 0; reel < reelCount; reel++) {
+      line[reel][1] = SlotSymbol.solar;
+    }
+    final solar = engine.evaluate(line, totalBet: bet, freeSpin: false);
     expect(
       solar.lineWins.any(
         (win) => win.symbol == SlotSymbol.solar && win.count == 4,
@@ -97,18 +96,18 @@ void main() {
     );
 
     final board = engine.evaluate(
-      cheatGrid(CheatSpin.fullSolar),
+      gridOf(SlotSymbol.solar),
       totalBet: bet,
       freeSpin: false,
     );
     expect(board.totalWin, greaterThan(bet * 30));
     expect(board.tier, 2);
 
-    final bonus = engine.evaluate(
-      cheatGrid(CheatSpin.bonus4),
-      totalBet: bet,
-      freeSpin: false,
-    );
+    final scatter = gridOf(SlotSymbol.ten);
+    for (final (reel, row) in const [(0, 0), (1, 2), (2, 0), (3, 3)]) {
+      scatter[reel][row] = SlotSymbol.bonus;
+    }
+    final bonus = engine.evaluate(scatter, totalBet: bet, freeSpin: false);
     expect(bonus.scatterCount, 4);
     expect(bonus.freeSpinsAwarded, SlotRules.freeSpinsFor4);
   });

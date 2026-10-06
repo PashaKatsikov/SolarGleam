@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../assets.dart';
+import '../game/gleam_settings.dart';
 import '../game/slot_controller.dart';
 import '../theme/gleam_theme.dart';
 import '../widgets/image_slice.dart';
 import '../widgets/loading_backdrop.dart';
 import '../widgets/overlays.dart';
+import '../widgets/profile_avatar.dart';
 import '../widgets/reel_board.dart';
 
 class GameScreen extends StatefulWidget {
@@ -388,28 +390,57 @@ class _Hud extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        IconButton(
-          onPressed: onBack,
-          tooltip: 'Menu',
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          icon: const Icon(Icons.arrow_back, color: GleamColors.goldLight),
-        ),
-        Expanded(
-          child: _Plaque(
-            label: 'BALANCE',
-            value: formatGleam(controller.balance),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _Plaque(label: 'WIN', value: formatGleam(controller.shownWin)),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Keep the avatar square and inside the HUD band.
+        final avatarSize = constraints.maxHeight.clamp(40.0, 64.0);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            IconButton(
+              onPressed: onBack,
+              tooltip: 'Menu',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              icon: const Icon(Icons.arrow_back, color: GleamColors.goldLight),
+            ),
+            // The avatar only appears when the player set a custom photo;
+            // otherwise the HUD looks exactly as before.
+            ListenableBuilder(
+              listenable: GleamSettings.instance,
+              builder: (context, _) {
+                final path = GleamSettings.instance.profilePhotoPath;
+                if (path == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Center(
+                    child: ProfileAvatar(
+                      photoPath: path,
+                      size: avatarSize,
+                      showBadge: false,
+                      borderWidth: 1.8,
+                    ),
+                  ),
+                );
+              },
+            ),
+            Expanded(
+              child: _Plaque(
+                label: 'BALANCE',
+                value: formatGleam(controller.balance),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _Plaque(
+                label: 'WIN',
+                value: formatGleam(controller.shownWin),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

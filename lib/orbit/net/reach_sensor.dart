@@ -1,11 +1,16 @@
-import 'dart:io';
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-/// Connectivity + reachability checks for the gray flow.
+/// Connectivity checks.
+///
+/// Reachability is decided purely by the active network interface
+/// (Wi-Fi / cellular / ethernet) via connectivity_plus — NOT by a DNS lookup
+/// or HTTP probe. A DNS probe can hang for seconds and report a false
+/// "offline" behind a VPN or a slow resolver; the connection check is instant
+/// and reflects whether the device actually has a link.
 class ReachSensor {
   final Connectivity _connectivity = Connectivity();
 
+  /// True when the device currently has a network connection.
   Future<bool> hasInterface() async {
     try {
       final status = await _connectivity.checkConnectivity();
@@ -15,25 +20,8 @@ class ReachSensor {
     }
   }
 
-  /// Reliable reachability. Probes well-known hosts (never our own domain)
-  /// so a VPN or a not-yet-propagated app domain cannot produce a false
-  /// "offline". Each lookup is time-boxed so Retry can never hang.
-  Future<bool> canReachNetwork() async {
-    if (!await hasInterface()) return false;
-    for (final host in const <String>['icloud.com', 'cloudflare.com']) {
-      try {
-        final records = await InternetAddress.lookup(
-          host,
-        ).timeout(const Duration(seconds: 3));
-        if (records.any((record) => record.rawAddress.isNotEmpty)) {
-          return true;
-        }
-      } catch (_) {
-        // Try the next host before declaring offline.
-      }
-    }
-    return false;
-  }
+  /// Internet presence, based on the active connection (no DNS / HTTP probe).
+  Future<bool> canReachNetwork() => hasInterface();
 
   Stream<List<ConnectivityResult>> get changes =>
       _connectivity.onConnectivityChanged;

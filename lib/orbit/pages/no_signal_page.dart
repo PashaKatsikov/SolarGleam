@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../theme/gleam_theme.dart';
+import '../config/orbit_config.dart';
 import '../net/reach_sensor.dart';
+import 'notice_scaffold.dart';
 
-/// No-internet screen. Retry re-runs the whole pipeline by pushing a fresh
-/// [retryBuilder] using THIS page's own (mounted) context.
+/// No-internet screen. Retry rebuilds from [retryBuilder] using this page's own
+/// mounted context.
 class NoSignalPage extends StatefulWidget {
   const NoSignalPage({
     super.key,
@@ -26,7 +29,6 @@ class _NoSignalPageState extends State<NoSignalPage> {
   @override
   void initState() {
     super.initState();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -62,137 +64,33 @@ class _NoSignalPageState extends State<NoSignalPage> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final landscape = media.orientation == Orientation.landscape;
-    final background = landscape
-        ? 'assets/orbit_screens/nowifi_landscape.webp'
-        : 'assets/orbit_screens/nowifi_portrait.webp';
-    final width = landscape
-        ? (media.size.width * 0.40).clamp(300.0, 520.0)
-        : (media.size.width * 0.66).clamp(260.0, 420.0);
-    final height = landscape ? 70.0 : 74.0;
-    final align =
-        landscape ? const Alignment(0, 0.82) : const Alignment(0, 0.80);
-
     return Scaffold(
-      backgroundColor: const Color(0xFF06040E),
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          Image.asset(
-            background,
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.high,
-          ),
-          Align(
-            alignment: align,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                _RetryButton(
-                  width: width,
-                  height: height,
-                  busy: _checking,
-                  onTap: _retry,
-                ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 180),
-                  child: _stillOffline
-                      ? const Padding(
-                          padding: EdgeInsets.only(top: 12),
-                          child: Text(
-                            'No connection yet',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              shadows: <Shadow>[
-                                Shadow(color: Colors.black, blurRadius: 5),
-                              ],
-                            ),
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ),
+      backgroundColor: GleamColors.night,
+      body: NoticePanel(
+        icon: Icons.wifi_off_rounded,
+        title: OrbitConfig.nowifiTitle,
+        subtitle: OrbitConfig.nowifiSubtitle,
+        actions: <Widget>[
+          NoticeButton(
+            label: OrbitConfig.retryLabel,
+            icon: Icons.refresh_rounded,
+            busy: _checking,
+            onTap: _retry,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RetryButton extends StatelessWidget {
-  const _RetryButton({
-    required this.width,
-    required this.height,
-    required this.busy,
-    required this.onTap,
-  });
-
-  final double width;
-  final double height;
-  final bool busy;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(34),
-          gradient: const LinearGradient(
-            colors: <Color>[Color(0xFFF8D78A), Color(0xFFC8882B)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-          border: Border.all(color: const Color(0xFF5A3A12), width: 3),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: Colors.black45,
-              blurRadius: 12,
-              offset: Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(34),
-            onTap: busy ? null : onTap,
-            child: Center(
-              child: busy
-                  ? const SizedBox.square(
-                      dimension: 28,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.8,
-                        color: Color(0xFF2A1A06),
-                      ),
-                    )
-                  : const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(Icons.refresh_rounded,
-                            color: Color(0xFF2A1A06), size: 28),
-                        SizedBox(width: 10),
-                        Text(
-                          'Retry',
-                          style: TextStyle(
-                            color: Color(0xFF2A1A06),
-                            fontSize: 23,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.8,
-                            height: 1.0,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
+        footer: AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          child: _stillOffline
+              ? Text(
+                  OrbitConfig.noConnectionYet,
+                  textAlign: TextAlign.center,
+                  style: rajdhani(
+                    15,
+                    Colors.white.withValues(alpha: 0.75),
+                    weight: FontWeight.w700,
+                  ),
+                )
+              : const SizedBox.shrink(),
         ),
       ),
     );

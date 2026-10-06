@@ -17,7 +17,7 @@ enum GleamRoute {
   };
 }
 
-/// Parsed answer from the config relay.
+/// Parsed response from the endpoint.
 class ConfigReply {
   const ConfigReply({
     required this.accepted,
@@ -58,8 +58,8 @@ final class NativeStop extends GleamStop {
   const NativeStop();
 }
 
-final class PortalStop extends GleamStop {
-  const PortalStop(this.url, {this.coldLaunch = false});
+final class WebStop extends GleamStop {
+  const WebStop(this.url, {this.coldLaunch = false});
 
   final String url;
   final bool coldLaunch;

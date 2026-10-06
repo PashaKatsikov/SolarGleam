@@ -1,14 +1,13 @@
 import 'dart:convert';
 
 import '../config/orbit_config.dart';
-import '../core/relay_models.dart';
-import '../core/veil_pack.dart';
+import '../core/flow_models.dart';
+import '../core/body_signer.dart';
 import 'gleam_vault.dart';
 import 'solar_agent.dart';
-import 'trace.dart';
 
-/// Posts the attribution payload to the edge relay as a sealed envelope and
-/// parses the partner's verbatim answer.
+/// Sends the composed payload to the endpoint as a sealed envelope and parses
+/// the response.
 class ConfigCall {
   ConfigCall(this._agent, this._vault);
 
@@ -16,12 +15,11 @@ class ConfigCall {
   final GleamVault _vault;
 
   Future<ConfigReply> request(Map<String, dynamic> payload) async {
-    if (!OrbitConfig.grayCredentialsReady) {
+    if (!OrbitConfig.credentialsReady) {
       return ConfigReply.rejected('credentials_unavailable');
     }
     try {
-      final envelope = VeilPack.seal(payload, secret: OrbitConfig.relaySecret);
-      glmTrace(() => '[GLM.CALL] request ${jsonEncode(payload)}');
+      final envelope = BodySigner.seal(payload, secret: OrbitConfig.signingSecret);
       final response = await _agent
           .post(
             Uri.parse(OrbitConfig.endpoint),
@@ -31,11 +29,7 @@ class ConfigCall {
             },
             body: jsonEncode(envelope),
           )
-          // Config POST timeout rotated per project (18 s).
           .timeout(const Duration(seconds: 18));
-      glmTrace(
-        () => '[GLM.CALL] response ${response.statusCode} ${response.body}',
-      );
       if (response.statusCode != 200) {
         return ConfigReply.rejected('http_${response.statusCode}');
       }
@@ -46,8 +40,7 @@ class ConfigCall {
         await _vault.cacheUrl(reply.url!, reply.expiresAt);
       }
       return reply;
-    } catch (error) {
-      glmTrace(() => '[GLM.CALL] failed: $error');
+    } catch (_) {
       return ConfigReply.rejected('network_failure');
     }
   }

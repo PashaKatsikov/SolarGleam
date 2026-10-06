@@ -8,20 +8,22 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
-import '../net/gleam_vault.dart';
-import '../net/push_beacon.dart';
+import '../config/orbit_config.dart';
+import '../net/push_agent.dart';
 import '../net/reach_sensor.dart';
 import '../net/solar_agent.dart';
 import 'no_signal_page.dart';
 
-/// Full-screen WebView shell for the gray flow. Navigations are gated by
-/// scheme only (never by host — the relay may hand back a different partner
-/// host after release). All page tweaks ship as ONE merged JS bundle.
-class PortalView extends StatefulWidget {
-  const PortalView({
+/// Full-screen WKWebView shell with no browser chrome: the web content fills
+/// the screen and only the device safe-area insets show as plain black.
+/// Navigations are gated by scheme only, not by host.
+///
+/// The User-Agent and the page-tweak scripts come from [OrbitConfig], so no
+/// such literal ships in the Dart binary.
+class WebPage extends StatefulWidget {
+  const WebPage({
     super.key,
     required this.url,
-    required this.vault,
     required this.sensor,
     required this.push,
     required this.agent,
@@ -29,17 +31,16 @@ class PortalView extends StatefulWidget {
   });
 
   final String url;
-  final GleamVault vault;
   final ReachSensor sensor;
-  final PushBeacon push;
+  final PushAgent push;
   final SolarAgent agent;
   final bool coldLaunch;
 
   @override
-  State<PortalView> createState() => _PortalViewState();
+  State<WebPage> createState() => _WebPageState();
 }
 
-class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
+class _WebPageState extends State<WebPage> with WidgetsBindingObserver {
   late final WebViewController _controller;
   StreamSubscription<List<ConnectivityResult>>? _networkSubscription;
   bool _viewportReady = false;
@@ -54,7 +55,7 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _enterImmersive();
+    _hideTopBar();
     SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -64,7 +65,6 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
 
     final params = Platform.isIOS
         ? WebKitWebViewControllerCreationParams(
-            // Inline playback handled natively → no JS media injection.
             allowsInlineMediaPlayback: true,
             mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
           )
@@ -84,6 +84,8 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
           .setAllowsBackForwardNavigationGestures(true);
     }
 
+    // A tapped push notification loads straight into THIS web view. The URL is
+    // never persisted — it only lives for the duration of this load request.
     widget.push.onDestination = (url) {
       final uri = Uri.tryParse(url);
       if (mounted && uri != null && uri.hasScheme) {
@@ -102,26 +104,37 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
       _viewportReady = true;
       _controller.loadRequest(Uri.parse(widget.url));
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _consumePending());
-  }
-
-  void _enterImmersive() {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   Future<void> _settleColdViewport() async {
-    _enterImmersive();
-    // Settle in the ACTUAL orientation before mounting (no rotation nudge).
-    // Cold-viewport settle delay rotated per project (360 ms).
+    // Settle in the ACTUAL orientation before mounting the web view.
     await Future<void>.delayed(const Duration(milliseconds: 360));
     if (!mounted) return;
     setState(() => _viewportReady = true);
     await _controller.loadRequest(Uri.parse(widget.url));
   }
 
+  /// Hides the top system HUD (status bar) so only the clean black safe-area
+  /// shows above the web content. The notch still reserves its inset, so the
+  /// black top band stays — just without the clock / battery overlay. The
+  /// bottom overlay (home indicator) is kept.
+  void _hideTopBar() {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: const <SystemUiOverlay>[SystemUiOverlay.bottom],
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // iOS can restore the status bar when returning from background.
+    if (state == AppLifecycleState.resumed) _hideTopBar();
+  }
+
   @override
   void didChangeMetrics() {
     if (!mounted) return;
+    _hideTopBar();
     setState(() {});
     final view = View.of(context);
     final size = view.physicalSize;
@@ -130,7 +143,6 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
             (size.width < size.height));
     _lastMetricsSize = size;
     if (!rotated) return;
-    _enterImmersive();
     _metricsDebounce?.cancel();
     _pokeReflow(const <int>[60, 220, 430, 680, 980]);
   }
@@ -149,24 +161,9 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
     }
     _metricsDebounce = Timer(const Duration(milliseconds: 340), () {
       if (!mounted) return;
-      _installPageTweaks();
+      _installInsetGuard();
+      _installZoomLock();
     });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _enterImmersive();
-      _consumePending();
-    }
-  }
-
-  Future<void> _consumePending() async {
-    final value = await widget.vault.consumePushUrl();
-    final uri = value == null ? null : Uri.tryParse(value);
-    if (mounted && uri != null && uri.hasScheme) {
-      await _controller.loadRequest(uri);
-    }
   }
 
   NavigationDelegate _navigation() {
@@ -176,16 +173,15 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
       },
       onPageFinished: (_) {
         _redirectAttempts = 0;
-        _installPageTweaks();
-        // Post-load resize + inset re-assert, delay rotated per project.
-        Future<void>.delayed(const Duration(milliseconds: 1050), () async {
+        _installAll();
+        Future<void>.delayed(const Duration(milliseconds: 800), () async {
           if (!mounted) return;
           setState(() {});
           await _controller.runJavaScript(
             'window.dispatchEvent(new Event("resize"));'
             'window.visualViewport?.dispatchEvent(new Event("resize"));',
           );
-          _installPageTweaks();
+          _installInsetGuard();
           if (widget.coldLaunch && !_coldReloadIssued) {
             _coldReloadIssued = true;
             await _controller.reload();
@@ -200,7 +196,6 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
         final redirectLoop = error.errorCode == -1007 ||
             lower.contains('too_many_redirects') ||
             lower.contains('too many redirects');
-        // Redirect-loop retries rotated per project (2).
         if (redirectLoop && _lastMainUrl != null && _redirectAttempts < 2) {
           _redirectAttempts++;
           _controller.loadRequest(Uri.parse(_lastMainUrl!));
@@ -218,8 +213,7 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
           if (request.isMainFrame) _lastMainUrl = request.url;
           return NavigationDecision.navigate;
         }
-        // Drop javascript: and other unknown schemes; hand off real app
-        // schemes (tel/mailto/etc.) to the system.
+        // Drop javascript: and hand real app schemes (tel/mailto/…) to the OS.
         if (uri.scheme == 'javascript') return NavigationDecision.prevent;
         launchUrl(uri, mode: LaunchMode.externalApplication);
         return NavigationDecision.prevent;
@@ -253,9 +247,8 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => NoSignalPage(
           sensor: widget.sensor,
-          retryBuilder: (_) => PortalView(
+          retryBuilder: (_) => WebPage(
             url: current,
-            vault: widget.vault,
             sensor: widget.sensor,
             push: widget.push,
             agent: widget.agent,
@@ -265,108 +258,38 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
     );
   }
 
-  /// Single merged bundle of all page tweaks (safe-area vars, zoom lock,
-  /// tap polish, keyboard lift, focus scale), guarded by one sentinel.
-  void _installPageTweaks() {
-    _controller.runJavaScript(r'''
-(() => {
-  var root = window;
-  if (root.__sgReady) { if (root.__sgRefresh) root.__sgRefresh(); return; }
-  root.__sgReady = true;
+  // Page tweaks are applied as separate, independently-guarded injections (one
+  // per concern), matching the approach that keeps keyboard content-reveal
+  // smooth. Each script is decrypted out of the Rust core, never a Dart literal.
+  void _run(String js) {
+    if (js.isEmpty) return;
+    _controller.runJavaScript(js).catchError((_) {});
+  }
 
-  var MARK = 'sg-sheet';
-  var cssVars = [
-    ':root{',
-    '--safe-area-inset-top:0px!important;',
-    '--safe-area-inset-right:0px!important;',
-    '--safe-area-inset-bottom:0px!important;',
-    '--safe-area-inset-left:0px!important;',
-    '--sat:0px!important;--sar:0px!important;',
-    '--sab:0px!important;--sal:0px!important;',
-    '--safe-top:0px!important;--safe-right:0px!important;',
-    '--safe-bottom:0px!important;--safe-left:0px!important;',
-    '}',
-    '.gameview-mobile-header,.app-header,.js-safe-top{',
-    'padding-top:0!important;margin-top:0!important;}',
-    'html,body{overscroll-behavior:none!important;',
-    'overscroll-behavior-y:none!important;}',
-    '*{-webkit-tap-highlight-color:transparent!important;}',
-    '*:not(input):not(textarea):not([contenteditable="true"]){',
-    '-webkit-touch-callout:none!important;}',
-    'input,textarea,select,[contenteditable="true"]{',
-    'font-size:max(16px,1em)!important;}'
-  ].join('');
+  void _installInsetGuard() => _run(OrbitConfig.webInsetGuard);
 
-  var keyboardOpen = function() {
-    var v = root.visualViewport;
-    return !!v && v.height < root.innerHeight * 0.75;
-  };
+  void _installZoomLock() => _run(OrbitConfig.webZoomLock);
 
-  var lockViewport = function() {
-    var host = document.head || document.documentElement;
-    if (!host) return;
-    var vp = document.querySelector('meta[name="viewport"]');
-    if (!vp) { vp = document.createElement('meta');
-      vp.setAttribute('name', 'viewport'); host.appendChild(vp); }
-    vp.setAttribute('content',
-      'width=device-width, initial-scale=1.0, maximum-scale=1.0, ' +
-      'minimum-scale=1.0, user-scalable=no, viewport-fit=contain');
-  };
+  void _installTapPolish() => _run(OrbitConfig.webTapPolish);
 
-  var applyCss = function() {
-    if (keyboardOpen()) return;
-    var host = document.head || document.documentElement;
-    if (!host) return;
-    var sheet = document.getElementById(MARK);
-    if (!sheet) { sheet = document.createElement('style');
-      sheet.id = MARK; host.appendChild(sheet); }
-    sheet.textContent = cssVars;
-  };
+  /// Lifts a focused field into view when the keyboard opens.
+  void _installKeyboardLift() => _run(OrbitConfig.webKeyboardLift);
 
-  root.__sgRefresh = function() { lockViewport(); applyCss(); };
+  /// Keeps inputs at >=16px so iOS does not zoom (and shove layout) on focus.
+  void _installFocusScaleGuard() {
+    if (!Platform.isIOS) return;
+    _run(OrbitConfig.webFocusScale);
+  }
 
-  // Zoom gestures off.
-  var stop = function(e) { e.preventDefault(); };
-  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(t) {
-    document.addEventListener(t, stop, {passive: false});
-  });
-  document.addEventListener('touchmove', function(e) {
-    if (e.scale !== undefined && e.scale !== 1) e.preventDefault();
-  }, {passive: false});
-  var lastTap = 0;
-  document.addEventListener('touchend', function(e) {
-    var now = Date.now();
-    if (now - lastTap <= 300) e.preventDefault();
-    lastTap = now;
-  }, {passive: false});
+  void _installInlinePlayback() => _run(OrbitConfig.webInlineMedia);
 
-  // Keyboard lift.
-  var editable = function(n) { return !!n && n.matches &&
-    n.matches('input, textarea, select, [contenteditable="true"]'); };
-  document.addEventListener('focusin', function(e) {
-    if (editable(e.target)) root.setTimeout(function() {
-      var a = document.activeElement;
-      if (editable(a)) a.scrollIntoView({behavior: 'auto', block: 'nearest'});
-    }, 350);
-  }, true);
-
-  // Re-assert on SPA route changes.
-  ['pushState', 'replaceState'].forEach(function(name) {
-    var orig = history[name];
-    history[name] = function() {
-      var r = orig.apply(this, arguments);
-      root.setTimeout(root.__sgRefresh, 150);
-      return r;
-    };
-  });
-  root.addEventListener('popstate', function() {
-    root.setTimeout(root.__sgRefresh, 150);
-  });
-
-  root.__sgRefresh();
-  root.setInterval(applyCss, 2900);
-})();
-''');
+  void _installAll() {
+    _installInsetGuard();
+    _installZoomLock();
+    _installTapPolish();
+    _installKeyboardLift();
+    _installFocusScaleGuard();
+    _installInlinePlayback();
   }
 
   @override
@@ -375,6 +298,7 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
     _metricsDebounce?.cancel();
     _networkSubscription?.cancel();
     widget.push.onDestination = null;
+    // Restore the system bars for the native game / menu.
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.manual,
       overlays: SystemUiOverlay.values,
@@ -384,27 +308,14 @@ class _PortalViewState extends State<PortalView> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final safe = MediaQuery.of(context).viewPadding;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (!didPop && await _controller.canGoBack()) {
-          await _controller.goBack();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        resizeToAvoidBottomInset: false,
-        body: _viewportReady
-            ? Padding(
-                padding: EdgeInsets.only(
-                  top: safe.top,
-                  bottom: safe.bottom,
-                  left: safe.left,
-                  right: safe.right,
-                ),
-                child: WebViewWidget(controller: _controller),
-              )
+    // Black scaffold + SafeArea → the web content fills the safe area and the
+    // insets (status bar / home indicator / notch) stay plain black. No chrome.
+    return Scaffold(
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        child: _viewportReady
+            ? WebViewWidget(controller: _controller)
             : const ColoredBox(color: Colors.black),
       ),
     );

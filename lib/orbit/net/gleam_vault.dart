@@ -1,20 +1,19 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../core/relay_models.dart';
+import '../core/flow_models.dart';
 
-/// Session persistence for the gray flow.
+/// Session persistence.
 class GleamVault {
-  static const String _routeKey = 'sg.orbit.route';
-  static const String _expiryKey = 'sg.orbit.expiry';
-  static const String _inviteKey = 'sg.orbit.invite.after';
-  static const String _permissionKey = 'sg.orbit.push.allowed';
-  static const String _osDeniedKey = 'sg.orbit.push.os_denied';
-  static const String _savedUrlKey = 'sg.orbit.secure.destination';
-  static const String _pendingUrlKey = 'sg.orbit.secure.pending';
+  static const String _routeKey = 'app.flow.mode';
+  static const String _expiryKey = 'app.flow.ttl';
+  static const String _inviteKey = 'app.prompt.next';
+  static const String _permissionKey = 'app.push.enabled';
+  static const String _osDeniedKey = 'app.push.blocked';
+  static const String _savedUrlKey = 'app.flow.cache';
 
-  /// Fallback lifetime for a saved portal URL when the relay omits
-  /// `expires` — a stale URL from an old response must not live forever.
+  /// Fallback lifetime for a saved URL when the response omits `expires` — a
+  /// stale URL must not live forever.
   static const int savedUrlExpiryDays = 7;
 
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
@@ -50,23 +49,6 @@ class GleamVault {
     final expiry = _preferences.getInt(_expiryKey);
     return expiry == null ||
         DateTime.now().millisecondsSinceEpoch ~/ 1000 >= expiry;
-  }
-
-  Future<void> stashPushUrl(String url) async {
-    if (url.trim().isEmpty) return;
-    try {
-      await _secure.write(key: _pendingUrlKey, value: url.trim());
-    } catch (_) {}
-  }
-
-  Future<String?> consumePushUrl() async {
-    try {
-      final value = await _secure.read(key: _pendingUrlKey);
-      if (value != null) await _secure.delete(key: _pendingUrlKey);
-      return value;
-    } catch (_) {
-      return null;
-    }
   }
 
   bool get pushAllowed => _preferences.getBool(_permissionKey) ?? false;

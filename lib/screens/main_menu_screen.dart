@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../assets.dart';
@@ -9,6 +10,7 @@ import '../theme/gleam_theme.dart';
 import '../widgets/image_slice.dart';
 import '../widgets/loading_backdrop.dart';
 import '../widgets/overlays.dart';
+import '../widgets/profile_avatar.dart';
 import 'game_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
@@ -44,6 +46,71 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not open the page. Try again.')),
+      );
+    }
+  }
+
+  Future<void> _openPhotoOptions() async {
+    final hasPhoto = GleamSettings.instance.profilePhotoPath != null;
+    final choice = await showModalBottomSheet<_PhotoAction>(
+      context: context,
+      backgroundColor: const Color(0xF20C1022),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 8),
+            Text('PROFILE PHOTO', style: cinzel(16, GleamColors.goldLight)),
+            const SizedBox(height: 4),
+            _PhotoOption(
+              icon: Icons.photo_camera_rounded,
+              label: 'Take Photo',
+              onTap: () => Navigator.pop(sheetContext, _PhotoAction.camera),
+            ),
+            _PhotoOption(
+              icon: Icons.photo_library_rounded,
+              label: 'Choose from Gallery',
+              onTap: () => Navigator.pop(sheetContext, _PhotoAction.gallery),
+            ),
+            if (hasPhoto)
+              _PhotoOption(
+                icon: Icons.delete_outline_rounded,
+                label: 'Remove Photo',
+                onTap: () => Navigator.pop(sheetContext, _PhotoAction.remove),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    switch (choice) {
+      case _PhotoAction.camera:
+        await _pickPhoto(ImageSource.camera);
+      case _PhotoAction.gallery:
+        await _pickPhoto(ImageSource.gallery);
+      case _PhotoAction.remove:
+        await GleamSettings.instance.clearProfilePhoto();
+    }
+  }
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final file = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 88,
+      );
+      if (file == null) return;
+      await GleamSettings.instance.setProfilePhoto(file.path);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not add the photo. Try again.')),
       );
     }
   }
@@ -127,8 +194,35 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               onClose: () => setState(() => _settings = false),
               onPrivacy: () => _openPage(_privacyUrl),
               onSupport: () => _openPage(_supportUrl),
+              onEditPhoto: _openPhotoOptions,
             ),
         ],
+      ),
+    );
+  }
+}
+
+enum _PhotoAction { camera, gallery, remove }
+
+class _PhotoOption extends StatelessWidget {
+  const _PhotoOption({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: GleamColors.gold),
+      title: Text(
+        label,
+        style: cinzel(16, GleamColors.ivory, weight: 600),
       ),
     );
   }
@@ -209,11 +303,13 @@ class _SettingsSheet extends StatelessWidget {
     required this.onClose,
     required this.onPrivacy,
     required this.onSupport,
+    required this.onEditPhoto,
   });
 
   final VoidCallback onClose;
   final VoidCallback onPrivacy;
   final VoidCallback onSupport;
+  final VoidCallback onEditPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +323,8 @@ class _SettingsSheet extends StatelessWidget {
           onClose: onClose,
           onPrivacy: onPrivacy,
           onSupport: onSupport,
+          onEditPhoto: onEditPhoto,
+          photoPath: settings.profilePhotoPath,
         );
       },
     );
@@ -240,6 +338,8 @@ class _SettingsPanel extends StatelessWidget {
     required this.onClose,
     required this.onPrivacy,
     required this.onSupport,
+    required this.onEditPhoto,
+    required this.photoPath,
   });
 
   final bool vibration;
@@ -247,6 +347,8 @@ class _SettingsPanel extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onPrivacy;
   final VoidCallback onSupport;
+  final VoidCallback onEditPhoto;
+  final String? photoPath;
 
   @override
   Widget build(BuildContext context) {
@@ -289,6 +391,54 @@ class _SettingsPanel extends StatelessWidget {
                           ),
                         ],
                       ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: GleamColors.plaque,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: GleamColors.gold),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                ProfileAvatar(
+                                  photoPath: photoPath,
+                                  onTap: onEditPhoto,
+                                  size: 54,
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    'Profile Photo',
+                                    style: cinzel(
+                                      16,
+                                      GleamColors.ivory,
+                                      weight: 600,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: onEditPhoto,
+                                  child: Text(
+                                    photoPath == null ? 'SET' : 'CHANGE',
+                                    style: cinzel(
+                                      14,
+                                      GleamColors.goldLight,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       Padding(
                         padding: const EdgeInsets.only(right: 10),
                         child: DecoratedBox(

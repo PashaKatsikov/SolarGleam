@@ -4,18 +4,16 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
-/// Packs an attribution payload into the edge-relay envelope.
+/// Seals a payload into the request envelope.
 ///
-/// Wire shape (field names + schema are unique per app — see the relay
-/// deploy registry): `{ g: <rev>, j: <nonceHex>, c: <b64url>, u: <tag16> }`.
-///
+/// Wire shape: `{ g: <rev>, j: <nonceHex>, c: <b64url>, u: <tag16> }` where
 ///   raw       = utf8(json(body))
 ///   keystream = sha256(secret + nonce + counterBE32) blocks
 ///   enc       = raw XOR keystream
 ///   payload   = base64url(enc) without padding
 ///   tag       = HMAC_sha256(secret, nonce + enc).hex()[:16]
-class VeilPack {
-  const VeilPack._();
+class BodySigner {
+  const BodySigner._();
 
   static const int _schemaRev = 17;
   static const String _fSchema = 'g';

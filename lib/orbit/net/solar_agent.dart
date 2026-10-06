@@ -5,12 +5,9 @@ import 'package:http/http.dart' as http;
 
 import '../config/orbit_config.dart';
 
-/// HTTP client that stamps a real mobile browser User-Agent on every request.
-///
-/// GAME THEME CATEGORY: slot (app-identity suffix intentionally OMITTED —
-/// the operator confirmed none is required). Every UA fragment, including the
-/// browser scaffolding, is assembled at runtime from encoded byte arrays in
-/// [OrbitConfig]; no plaintext browser literal ships in the binary.
+/// HTTP client that stamps a mobile browser User-Agent on every request. The
+/// UA fragments are assembled at runtime from [OrbitConfig], so no browser
+/// literal ships in the binary.
 class SolarAgent extends http.BaseClient {
   final http.Client _transport = http.Client();
   String? _userAgent;

@@ -7,11 +7,10 @@ import 'package:flutter/services.dart';
 import 'orbit/config/orbit_config.dart';
 import 'orbit/net/config_call.dart';
 import 'orbit/net/gleam_vault.dart';
-import 'orbit/net/push_beacon.dart';
+import 'orbit/net/push_agent.dart';
 import 'orbit/net/reach_sensor.dart';
 import 'orbit/net/solar_agent.dart';
-import 'orbit/net/track_relay.dart';
-import 'orbit/net/trace.dart';
+import 'orbit/net/signal_collector.dart';
 import 'orbit/orbit_router.dart';
 import 'screens/splash_screen.dart';
 import 'theme/gleam_theme.dart';
@@ -26,42 +25,28 @@ Future<void> main() async {
     agent.prepare(),
   ]);
 
-  glmTrace(
-    () => '[GLM.BOOT] credsReady=${OrbitConfig.grayCredentialsReady} '
-        'endpoint=${OrbitConfig.endpoint} '
-        'afKeyLen=${OrbitConfig.appsFlyerKey.length} '
-        'fbNum=${OrbitConfig.firebaseProjectNumber}',
-  );
-
-  var productionServicesReady = false;
-  if (OrbitConfig.grayCredentialsReady) {
+  var servicesReady = false;
+  if (OrbitConfig.credentialsReady) {
     try {
       await Firebase.initializeApp();
-      productionServicesReady = true;
-    } catch (error) {
-      glmTrace(() => '[GLM.BOOT] Firebase init failed: $error');
-    }
-    if (productionServicesReady) {
+      servicesReady = true;
+    } catch (_) {}
+    if (servicesReady) {
       try {
         await FirebaseAppCheck.instance.activate(
           providerApple: kDebugMode
               ? const AppleDebugProvider()
               : const AppleAppAttestWithDeviceCheckFallbackProvider(),
         );
-      } catch (error) {
-        // App Check must never block FCM / gray routing.
-        glmTrace(() => '[GLM.BOOT] AppCheck skipped: $error');
+      } catch (_) {
+        // App Check must never block messaging.
       }
     }
-  } else {
-    glmTrace(
-      () => '[GLM.BOOT] gate DISABLED — missing creds. White game only.',
-    );
   }
 
   final sensor = ReachSensor();
-  final push = PushBeacon(vault, enabled: productionServicesReady);
-  final track = TrackRelay(agent);
+  final push = PushAgent(vault, enabled: servicesReady);
+  final track = SignalCollector(agent);
   final router = OrbitRouter(
     vault: vault,
     sensor: sensor,
@@ -69,7 +54,7 @@ Future<void> main() async {
     call: ConfigCall(agent, vault),
     push: push,
     agent: agent,
-    runtimeEnabled: OrbitConfig.grayCredentialsReady,
+    runtimeEnabled: OrbitConfig.credentialsReady,
   );
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

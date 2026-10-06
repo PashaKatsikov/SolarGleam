@@ -5,9 +5,11 @@
 //! sg_e2  evaluate a grid                            -> words written or 0
 //! sg_p3  pay for `count` of a kind on one line
 //! sg_c4  rule constants
+//! sg_s5  decode an encoded value by id                  -> byte length or 0
 
 pub mod engine;
 pub mod rng;
+pub mod strings;
 pub mod tables;
 pub mod vault;
 
@@ -105,6 +107,27 @@ pub extern "C" fn sg_p3(symbol: i32, count: i32, line_bet: i64) -> i64 {
 
 /// 0 paylines, 1 scatter x3 multiplier, 2 scatter x4+ multiplier,
 /// 3 free spins for 3, 4 free spins for 4+, 5 free-spin line multiplier.
+/// Decodes value `id` (see `strings` for the id list) into `out` as UTF-8
+/// without a trailing NUL. Returns the byte length. When `out` is
+/// null or `cap` is too small, nothing is written and the required length is
+/// returned so the caller can size its buffer.
+///
+/// # Safety
+/// `out` must point to at least `cap` writable bytes when non-null.
+#[no_mangle]
+pub unsafe extern "C" fn sg_s5(id: i32, out: *mut u8, cap: i32) -> i32 {
+    let len = strings::decoded_len(id);
+    if len == 0 {
+        return 0;
+    }
+    if out.is_null() || cap < 0 || (cap as usize) < len {
+        return len as i32;
+    }
+    let slice = std::slice::from_raw_parts_mut(out, len);
+    strings::decode(id, slice);
+    len as i32
+}
+
 #[no_mangle]
 pub extern "C" fn sg_c4(id: i32) -> i64 {
     let Some(vault) = core() else { return 0 };

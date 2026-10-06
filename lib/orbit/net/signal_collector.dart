@@ -9,12 +9,11 @@ import 'package:flutter/widgets.dart';
 
 import '../config/orbit_config.dart';
 import 'solar_agent.dart';
-import 'trace.dart';
 
-/// AppsFlyer attribution: install conversion, re-open / deep-link data, and
-/// assembling the flat payload the config relay expects.
-class TrackRelay {
-  TrackRelay(this._agent);
+/// Wraps the AppsFlyer SDK: install conversion, re-open and deep-link data, and
+/// builds the flat payload posted to the endpoint.
+class SignalCollector {
+  SignalCollector(this._agent);
 
   final SolarAgent _agent;
   AppsflyerSdk? _sdk;
@@ -28,7 +27,7 @@ class TrackRelay {
   Future<void> start() => _startFuture ??= _start();
 
   Future<void> _start() async {
-    if (!OrbitConfig.grayCredentialsReady) {
+    if (!OrbitConfig.credentialsReady) {
       _completeEmpty();
       return;
     }
@@ -55,8 +54,7 @@ class TrackRelay {
         registerOnAppOpenAttributionCallback: true,
         registerOnDeepLinkingCallback: true,
       );
-    } catch (error) {
-      glmTrace(() => '[GLM.TRACK] init failed: $error');
+    } catch (_) {
       _completeEmpty();
     }
   }
@@ -66,7 +64,7 @@ class TrackRelay {
     final status = await AppTrackingTransparency.trackingAuthorizationStatus;
     if (status != TrackingStatus.notDetermined) return;
     await WidgetsBinding.instance.endOfFrame;
-    // ATT prompt delay after first frame — rotated per project (420 ms).
+    // Let the first frame settle before prompting.
     await Future<void>.delayed(const Duration(milliseconds: 420));
     await AppTrackingTransparency.requestTrackingAuthorization();
   }
@@ -77,22 +75,17 @@ class TrackRelay {
       final status = received['status']?.toString().toLowerCase();
       final failed = status == 'failure' ||
           (received['af_status'] == null && received.containsKey('status'));
-      glmTrace(
-        () => '[GLM.TRACK] conversion status=$status '
-            'af_status=${received['af_status']} keys=${received.keys.toList()}',
-      );
       if (failed) {
         _install = <String, dynamic>{};
       } else if (received['af_status'] == 'Organic') {
         await Future<void>.delayed(
-          const Duration(seconds: OrbitConfig.organicRecheckSeconds),
+          Duration(seconds: OrbitConfig.organicRecheckSeconds),
         );
         _install = await _fetchGcd() ?? received;
       } else {
         _install = received;
       }
-    } catch (error) {
-      glmTrace(() => '[GLM.TRACK] conversion parse error: $error');
+    } catch (_) {
       _install = <String, dynamic>{};
     } finally {
       if (!_installReady.isCompleted) _installReady.complete();
@@ -189,7 +182,6 @@ class TrackRelay {
         }
       } catch (_) {}
     }
-    glmTrace(() => '[GLM.TRACK] payload ${jsonEncode(body)}');
     return body;
   }
 

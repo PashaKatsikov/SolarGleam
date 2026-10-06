@@ -429,6 +429,7 @@
 			);
 			name = "Build Solar Math";
 			outputPaths = (
+				"$(SRCROOT)/../rust/solar_math/build/$(PLATFORM_NAME)/libsolar_math.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

@@ -14,10 +14,12 @@ Future<void> backgroundMessageHandler(RemoteMessage _) async {}
 /// never written to disk — it is held in memory just long enough to hand to the
 /// web view, then dropped.
 class PushAgent {
-  PushAgent(this._vault, {required this.enabled});
+  // ignore: prefer_initializing_formals
+  PushAgent(this._vault, {required Future<bool> ready}) : _ready = ready;
 
   final GleamVault _vault;
-  final bool enabled;
+  final Future<bool> _ready;
+  bool? _enabled;
   FirebaseMessaging? _messaging;
   Future<void>? _bootFuture;
   Future<bool>? _permissionFuture;
@@ -47,8 +49,13 @@ class PushAgent {
   /// Fast path for routing: the destination of the notification that
   /// cold-launched the app (terminated → tapped), or null. Does not wait for
   /// the full [boot]; the URL is returned, never stored.
+  /// Messaging is usable only once the Firebase bootstrap (kicked off at
+  /// startup, off the first-frame path) has finished. Callers await this
+  /// instead of a plain flag so nothing touches Firebase before it is ready.
+  Future<bool> _isReady() async => _enabled ??= await _ready;
+
   Future<String?> coldTapDestination() async {
-    if (!enabled) return null;
+    if (!await _isReady()) return null;
     final messaging = _messaging ??= FirebaseMessaging.instance;
     try {
       final initial = await messaging.getInitialMessage().timeout(
@@ -64,7 +71,7 @@ class PushAgent {
   Future<void> boot() => _bootFuture ??= _boot();
 
   Future<void> _boot() async {
-    if (!enabled) return;
+    if (!await _isReady()) return;
     final messaging = _messaging ??= FirebaseMessaging.instance;
 
     FirebaseMessaging.onBackgroundMessage(backgroundMessageHandler);
@@ -165,7 +172,7 @@ class PushAgent {
   }
 
   Future<bool> canOfferPermission() async {
-    if (!enabled || _vault.pushDeniedByOs) return false;
+    if (_vault.pushDeniedByOs || !await _isReady()) return false;
     final messaging = _messaging;
     if (messaging == null) return false;
     final status =
@@ -185,7 +192,7 @@ class PushAgent {
   }
 
   Future<bool> _performPermissionRequest() async {
-    if (!enabled || _messaging == null) return false;
+    if (_messaging == null || !await _isReady()) return false;
     final result = await _messaging!.requestPermission(
       alert: true,
       badge: true,

@@ -40,7 +40,7 @@ target 'SolarMediaNotification' do
   use_frameworks!
   platform :ios, '15.0'
   # Must match the Firebase iOS SDK version firebase_core/messaging resolve.
-  pod 'Firebase/Messaging', '12.15.0'
+  pod 'Firebase/Messaging', '12.19.0'
 end
 
 post_install do |installer|

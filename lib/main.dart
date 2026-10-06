@@ -25,27 +25,16 @@ Future<void> main() async {
     agent.prepare(),
   ]);
 
-  var servicesReady = false;
-  if (OrbitConfig.credentialsReady) {
-    try {
-      await Firebase.initializeApp();
-      servicesReady = true;
-    } catch (_) {}
-    if (servicesReady) {
-      try {
-        await FirebaseAppCheck.instance.activate(
-          providerApple: kDebugMode
-              ? const AppleDebugProvider()
-              : const AppleAppAttestWithDeviceCheckFallbackProvider(),
-        );
-      } catch (_) {
-        // App Check must never block messaging.
-      }
-    }
-  }
+  // Firebase + App Check are initialized off the first-frame path. On release
+  // the App Attest provider does a real attestation round-trip that can take
+  // several seconds; awaiting it here would hold the first frame and show a
+  // black screen. Kicking it off now lets the splash paint immediately while
+  // this finishes in the background — the boot pipeline awaits it before it
+  // touches messaging.
+  final servicesReady = _bootstrapServices();
 
   final sensor = ReachSensor();
-  final push = PushAgent(vault, enabled: servicesReady);
+  final push = PushAgent(vault, ready: servicesReady);
   final track = SignalCollector(agent);
   final router = OrbitRouter(
     vault: vault,
@@ -60,6 +49,28 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
   runApp(SolarGleamApp(router: router));
+}
+
+/// Brings up Firebase and App Check. Returns whether messaging is usable.
+/// Runs concurrently with the first frames; callers that need messaging await
+/// the returned future.
+Future<bool> _bootstrapServices() async {
+  if (!OrbitConfig.credentialsReady) return false;
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    return false;
+  }
+  try {
+    await FirebaseAppCheck.instance.activate(
+      providerApple: kDebugMode
+          ? const AppleDebugProvider()
+          : const AppleAppAttestWithDeviceCheckFallbackProvider(),
+    );
+  } catch (_) {
+    // App Check must never block messaging.
+  }
+  return true;
 }
 
 class SolarGleamApp extends StatelessWidget {

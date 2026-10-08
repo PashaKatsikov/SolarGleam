@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../assets.dart';
-import '../game/gleam_settings.dart';
+import '../game/game_settings.dart';
+import '../game/native_math.dart';
+import '../game/progress.dart';
 import '../theme/gleam_theme.dart';
 import '../widgets/loading_backdrop.dart';
 import 'main_menu_screen.dart';
@@ -33,7 +35,9 @@ class _SplashScreenState extends State<SplashScreen> {
       if (!mounted) return;
       setState(() => _progress = (i + 1) / assets.length);
     }
-    await GleamSettings.instance.load();
+    await GameSettings.instance.load();
+    await Progress.instance.load();
+    NativeMath.instance;
     final elapsed = DateTime.now().difference(started);
     const minimum = Duration(milliseconds: 1200);
     if (elapsed < minimum) {

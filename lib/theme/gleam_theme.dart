@@ -26,38 +26,3 @@ TextStyle cinzel(
     fontVariations: [FontVariation.weight(weight)],
   );
 }
-
-TextStyle rajdhani(
-  double size,
-  Color color, {
-  FontWeight weight = FontWeight.w700,
-}) {
-  return TextStyle(
-    fontFamily: 'Rajdhani',
-    fontSize: size,
-    fontWeight: weight,
-    color: color,
-    height: 1,
-  );
-}
-
-String formatGleam(int value) {
-  final negative = value < 0;
-  final digits = value.abs().toString();
-  final buffer = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
-    buffer.write(digits[i]);
-  }
-  return negative ? '-$buffer' : buffer.toString();
-}
-
-ThemeData buildGleamTheme() {
-  return ThemeData(
-    brightness: Brightness.dark,
-    scaffoldBackgroundColor: GleamColors.night,
-    splashFactory: NoSplash.splashFactory,
-    highlightColor: Colors.transparent,
-    fontFamily: 'Rajdhani',
-  );
-}

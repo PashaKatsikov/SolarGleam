@@ -1,53 +1,27 @@
-//! Decodes the economy tables once at start-up. Every decoded number is held
-//! XOR-masked with a key chosen at start-up, and symbol indices are shuffled
+//! Decodes the balance tables once at start-up. Every decoded number is held
+//! XOR-masked with a key chosen at start-up, and orb / glyph ids are shuffled
 //! so the engine never works with the ids Dart sees.
 
 use crate::rng;
 use crate::tables::{self as t, dec};
 
-pub const MAX_SYMBOLS: usize = 32;
-
-const SLOT_WEIGHT: u32 = 0;
-const SLOT_PAY3: u32 = 64;
-const SLOT_PAY4: u32 = 128;
-const SLOT_MISC: u32 = 192;
-const SLOT_LINE: u32 = 256;
+const W: usize = t::WINDOW as usize;
 
 pub struct Vault {
     seed: u32,
-    pub symbols: usize,
-    pub reels: usize,
-    pub rows: usize,
-    pub line_count: usize,
-    weight: Vec<u32>,
-    pay3: Vec<u32>,
-    pay4: Vec<u32>,
-    lines: Vec<u32>,
-    misc: [u32; 12],
-    pub to_internal: [u8; MAX_SYMBOLS],
-    pub to_dart: [u8; MAX_SYMBOLS],
-    pub total_weight: u32,
-}
-
-#[derive(Clone, Copy)]
-pub enum Misc {
-    Wild = 0,
-    Bonus = 1,
-    Scatter3 = 2,
-    Scatter4 = 3,
-    FreeSpins3 = 4,
-    FreeSpins4 = 5,
-    FreeSpinMultiplier = 6,
-    TierBig = 7,
-    TierSolar = 8,
+    data: Vec<u32>,
+    pub to_internal_orb: [u8; t::ORBS],
+    pub to_dart_orb: [u8; t::ORBS],
+    pub to_internal_glyph: [u8; t::GLYPHS],
+    pub to_dart_glyph: [u8; t::GLYPHS],
 }
 
 impl Vault {
     fn mask(&self, slot: u32) -> u32 {
         self.seed
             .wrapping_mul(0x9E37_79B1)
-            .wrapping_add(slot.wrapping_mul(0x85EB_CA6B))
-            .rotate_left(slot & 31)
+            .wrapping_add(slot.wrapping_mul(0xC2B2_AE35))
+            .rotate_left((slot ^ (slot >> 3)) & 31)
     }
 
     fn lock(&self, value: u32, slot: u32) -> u32 {
@@ -58,148 +32,143 @@ impl Vault {
         value ^ self.mask(slot)
     }
 
-    pub fn weight(&self, internal: usize) -> u32 {
-        self.weight
-            .get(internal)
-            .map_or(0, |v| self.unlock(*v, SLOT_WEIGHT + internal as u32))
-    }
-
-    pub fn pay(&self, internal: usize, count: usize) -> u32 {
-        let (table, base) = if count >= 4 {
-            (&self.pay4, SLOT_PAY4)
-        } else {
-            (&self.pay3, SLOT_PAY3)
-        };
-        table
-            .get(internal)
-            .map_or(0, |v| self.unlock(*v, base + internal as u32))
-    }
-
-    pub fn misc(&self, which: Misc) -> u32 {
-        let i = which as usize;
-        self.unlock(self.misc[i], SLOT_MISC + i as u32)
-    }
-
-    /// Internal code of the wild or bonus symbol.
-    pub fn to_internal_misc(&self, which: Misc) -> u8 {
-        self.misc(which) as u8
-    }
-
-    pub fn line_row(&self, line: usize, reel: usize) -> usize {
-        let i = line * self.reels + reel;
-        self.lines
-            .get(i)
-            .map_or(0, |v| self.unlock(*v, SLOT_LINE + i as u32) as usize)
-    }
-
-    /// Weighted draw. Returns an internal symbol code.
-    pub fn draw_internal(&self) -> usize {
-        let mut pick = rng::below(self.total_weight);
-        for internal in 0..self.symbols {
-            let w = self.weight(internal);
-            if pick < w {
-                return internal;
-            }
-            pick -= w;
+    /// One value of one table. Out-of-range reads return zero.
+    pub fn get(&self, table: usize, index: usize) -> u32 {
+        if table >= t::TABLES || index >= W {
+            return 0;
         }
-        0
+        let slot = table * W + index;
+        self.data.get(slot).map_or(0, |v| self.unlock(*v, slot as u32))
+    }
+
+    pub fn misc(&self, which: usize) -> u32 {
+        self.get(t::T_MISC, which)
+    }
+
+    /// Value of a per-region table.
+    pub fn region(&self, table: usize, region: usize) -> u32 {
+        self.get(table, region)
+    }
+
+    /// Mode bits for a level.
+    pub fn modes(&self, region: usize, level: usize) -> u32 {
+        self.get(t::T_MODES, region * t::LEVELS + level)
+    }
+
+    /// Global level index at which an orb (internal code) joins the pool.
+    pub fn orb_unlock(&self, internal: usize) -> u32 {
+        self.get(t::T_ORB_UNLOCK, internal)
+    }
+
+    pub fn star_pct(&self, stars: usize) -> u32 {
+        self.get(t::T_STAR_PCT, stars.saturating_sub(1).min(2))
+    }
+
+    fn put(&mut self, table: usize, index: usize, value: u32) {
+        let slot = table * W + index;
+        self.data[slot] = self.lock(value, slot as u32);
     }
 }
 
+/// Linear blend between the first and last level of a region, rounded.
+pub fn lerp(from: u32, to: u32, level: usize) -> u32 {
+    let last = (t::LEVELS - 1) as i64;
+    let (a, b, l) = (from as i64, to as i64, level.min(t::LEVELS - 1) as i64);
+    ((a * last * 2 + (b - a) * l * 2 + last) / (last * 2)) as u32
+}
+
+fn permutation(
+    table: &[u32],
+    base: usize,
+    n: usize,
+) -> Option<([u8; t::ORBS], [u8; t::ORBS])> {
+    let mut forward = [0u8; t::ORBS];
+    let mut back = [0u8; t::ORBS];
+    let mut seen = [false; t::ORBS];
+    for i in 0..n {
+        let v = dec(table[i], (base * W + i) as u32) as usize;
+        if v >= n || seen[v] {
+            return None;
+        }
+        seen[v] = true;
+        forward[i] = v as u8;
+        back[v] = i as u8;
+    }
+    Some((forward, back))
+}
+
 pub fn open() -> Option<Vault> {
-    let n = t::SYMBOLS;
-    let (reels, rows, line_count) = (t::REELS, t::ROWS, t::LINES);
-    if n == 0 || n > MAX_SYMBOLS || reels * rows > 32 {
-        return None;
-    }
+    let (to_internal_orb, to_dart_orb) = permutation(&t::ORB_SHUFFLE, t::T_ORB_SHUFFLE, t::ORBS)?;
+    let (gi, gd) = permutation(&t::GLYPH_SHUFFLE, t::T_GLYPH_SHUFFLE, t::GLYPHS)?;
+    let mut to_internal_glyph = [0u8; t::GLYPHS];
+    let mut to_dart_glyph = [0u8; t::GLYPHS];
+    to_internal_glyph.copy_from_slice(&gi[..t::GLYPHS]);
+    to_dart_glyph.copy_from_slice(&gd[..t::GLYPHS]);
 
-    let mut to_internal = [0u8; MAX_SYMBOLS];
-    let mut to_dart = [0u8; MAX_SYMBOLS];
-    let mut seen = [false; MAX_SYMBOLS];
-    for dart in 0..n {
-        let internal = dec(t::SHUFFLE[dart], t::BASE_SHUFFLE + dart as u32) as usize;
-        if internal >= n || seen[internal] {
-            return None;
-        }
-        seen[internal] = true;
-        to_internal[dart] = internal as u8;
-        to_dart[internal] = dart as u8;
-    }
-
-    // Tables are listed in Dart order; the vault stores them by internal code.
-    let mut weights = vec![0u32; n];
-    let mut pays3 = vec![0u32; n];
-    let mut pays4 = vec![0u32; n];
-    for dart in 0..n {
-        let internal = to_internal[dart] as usize;
-        weights[internal] = dec(t::WEIGHT[dart], t::BASE_WEIGHT + dart as u32);
-        pays3[internal] = dec(t::PAY3[dart], t::BASE_PAY3 + dart as u32);
-        pays4[internal] = dec(t::PAY4[dart], t::BASE_PAY4 + dart as u32);
-    }
-
-    let mut lines = Vec::with_capacity(line_count * reels);
-    for (i, v) in t::LINE_ROWS.iter().enumerate() {
-        let row = dec(*v, t::BASE_LINE + i as u32);
-        if row as usize >= rows {
-            return None;
-        }
-        lines.push(row);
-    }
-
-    let rule = |i: usize| dec(t::MISC[i], t::BASE_MISC + i as u32);
-    let misc = [
-        to_internal[t::WILD_DART] as u32,
-        to_internal[t::BONUS_DART] as u32,
-        rule(0),
-        rule(1),
-        rule(2),
-        rule(3),
-        rule(4),
-        rule(5),
-        rule(6),
-    ];
-
-    let seed = rng::word() | 1;
     let mut vault = Vault {
-        seed,
-        symbols: n,
-        reels,
-        rows,
-        line_count,
-        weight: Vec::new(),
-        pay3: Vec::new(),
-        pay4: Vec::new(),
-        lines: Vec::new(),
-        misc: [0; 12],
-        to_internal,
-        to_dart,
-        total_weight: 0,
+        seed: rng::word() | 1,
+        data: vec![0; t::TABLES * W],
+        to_internal_orb,
+        to_dart_orb,
+        to_internal_glyph,
+        to_dart_glyph,
     };
 
-    let mut total = 0u32;
-    for (i, w) in weights.iter().enumerate() {
-        total = total.checked_add(*w)?;
-        let locked = vault.lock(*w, SLOT_WEIGHT + i as u32);
-        vault.weight.push(locked);
+    let rows: [(usize, &[u32]); 14] = [
+        (t::T_ORBS_FROM, &t::ORBS_FROM[..]),
+        (t::T_ORBS_TO, &t::ORBS_TO[..]),
+        (t::T_LEN_FROM, &t::LEN_FROM[..]),
+        (t::T_LEN_TO, &t::LEN_TO[..]),
+        (t::T_FLASH_FROM, &t::FLASH_FROM[..]),
+        (t::T_FLASH_TO, &t::FLASH_TO[..]),
+        (t::T_GAP, &t::GAP[..]),
+        (t::T_ATTEMPTS, &t::ATTEMPTS[..]),
+        (t::T_HINTS, &t::HINTS[..]),
+        (t::T_REPLAYS, &t::REPLAYS[..]),
+        (t::T_ENERGY_BASE, &t::ENERGY_BASE[..]),
+        (t::T_ENERGY_STEP, &t::ENERGY_STEP[..]),
+        (t::T_COST, &t::COST[..]),
+        (t::T_PAR, &t::PAR[..]),
+    ];
+    for (table, src) in rows {
+        for (i, v) in src.iter().enumerate() {
+            let plain = dec(*v, (table * W + i) as u32);
+            vault.put(table, i, plain);
+        }
     }
-    if total == 0 {
-        return None;
+
+    for (i, v) in t::MODES.iter().enumerate() {
+        let plain = dec(*v, (t::T_MODES * W + i) as u32);
+        if plain == 0 || plain >= 32 {
+            return None;
+        }
+        vault.put(t::T_MODES, i, plain);
     }
-    vault.total_weight = total;
-    for (i, v) in pays3.iter().enumerate() {
-        let locked = vault.lock(*v, SLOT_PAY3 + i as u32);
-        vault.pay3.push(locked);
+
+    // Unlock order and the shuffles are kept by internal code.
+    for dart in 0..t::ORBS {
+        let plain = dec(t::ORB_UNLOCK[dart], (t::T_ORB_UNLOCK * W + dart) as u32);
+        vault.put(t::T_ORB_UNLOCK, to_internal_orb[dart] as usize, plain);
     }
-    for (i, v) in pays4.iter().enumerate() {
-        let locked = vault.lock(*v, SLOT_PAY4 + i as u32);
-        vault.pay4.push(locked);
+    for (i, v) in t::STAR_PCT.iter().enumerate() {
+        let plain = dec(*v, (t::T_STAR_PCT * W + i) as u32);
+        vault.put(t::T_STAR_PCT, i, plain);
     }
-    for (i, v) in lines.iter().enumerate() {
-        let locked = vault.lock(*v, SLOT_LINE + i as u32);
-        vault.lines.push(locked);
+    for (i, v) in t::MISC.iter().enumerate() {
+        let plain = dec(*v, (t::T_MISC * W + i) as u32);
+        vault.put(t::T_MISC, i, plain);
     }
-    for (i, v) in misc.iter().enumerate() {
-        vault.misc[i] = vault.lock(*v, SLOT_MISC + i as u32);
+
+    // Sanity: every region must stay inside the orb pool and the board limits.
+    for r in 0..t::REGIONS {
+        let max_orbs = vault.region(t::T_ORBS_TO, r) as usize;
+        let min_orbs = vault.region(t::T_ORBS_FROM, r) as usize;
+        if min_orbs < 3 || max_orbs > t::ORBS || min_orbs > max_orbs {
+            return None;
+        }
+        if vault.region(t::T_ATTEMPTS, r) == 0 {
+            return None;
+        }
     }
     Some(vault)
 }

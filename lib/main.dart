@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/splash_screen.dart';
-import 'theme/gleam_theme.dart';
+import 'theme/neon_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +19,7 @@ class SolarGleamApp extends StatelessWidget {
     return MaterialApp(
       title: 'Solar Gleam',
       debugShowCheckedModeBanner: false,
-      theme: buildGleamTheme(),
+      theme: buildNeonTheme(),
       home: const SplashScreen(),
     );
   }

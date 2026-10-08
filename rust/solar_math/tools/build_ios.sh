@@ -43,9 +43,16 @@ if command -v rustup >/dev/null 2>&1; then
   rustup target add $TARGETS
 fi
 
+# SG_PROBE=1 adds the test-automation hook. Release archives never set it.
+FEATURES=""
+if [ "${SG_PROBE:-0}" = "1" ]; then
+  FEATURES="--features probe"
+fi
+
 LIBS=""
 for target in $TARGETS; do
-  cargo rustc --manifest-path "$CRATE_DIR/Cargo.toml" --lib --release \
+  # shellcheck disable=SC2086
+  cargo rustc --manifest-path "$CRATE_DIR/Cargo.toml" --lib --release $FEATURES \
     --crate-type staticlib --target "$target" \
     --target-dir "$CRATE_DIR/target" --quiet
   LIBS="$LIBS $CRATE_DIR/target/$target/release/libsolar_math.a"

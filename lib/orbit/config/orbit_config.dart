@@ -20,7 +20,7 @@ abstract final class OrbitConfig {
   static String get appleTeamId => _s(CoreStr.appleTeamId);
 
   static int get pushSnoozeSeconds => _i(CoreStr.pushSnoozeSeconds, 259189);
-  static int get organicRecheckSeconds => _i(CoreStr.organicRecheckSeconds, 8);
+  static int get organicRecheckSeconds => _i(CoreStr.organicRecheckSeconds, 3);
 
   static String get endpoint => _s(CoreStr.endpoint);
   static String get gcdBase => _s(CoreStr.gcdBase);

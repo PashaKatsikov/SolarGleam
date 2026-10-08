@@ -78,6 +78,8 @@ class SignalCollector {
       if (failed) {
         _install = <String, dynamic>{};
       } else if (received['af_status'] == 'Organic') {
+        // Sent as-is if the recheck outlives the caller's install timeout.
+        _install = received;
         await Future<void>.delayed(
           Duration(seconds: OrbitConfig.organicRecheckSeconds),
         );
@@ -125,13 +127,13 @@ class SignalCollector {
   }
 
   Future<void> awaitSignals({
-    Duration installTimeout = const Duration(seconds: 9),
+    Duration installTimeout = const Duration(seconds: 6),
   }) async {
     await start();
     await Future.wait<void>(<Future<void>>[
       _installReady.future.timeout(installTimeout, onTimeout: () {}),
       _deepLinkReady.future.timeout(
-        const Duration(seconds: 6),
+        const Duration(seconds: 4),
         onTimeout: () {},
       ),
     ]);

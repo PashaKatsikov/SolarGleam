@@ -29,7 +29,7 @@ class ConfigCall {
             },
             body: jsonEncode(envelope),
           )
-          .timeout(const Duration(seconds: 18));
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) {
         return ConfigReply.rejected('http_${response.statusCode}');
       }

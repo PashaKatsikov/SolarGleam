@@ -44,6 +44,6 @@ void main() {
     expect(core.read(CoreStr.iosStoreId), '6817300726');
     expect(core.read(CoreStr.appleTeamId), '48UP4UDWV7');
     expect(core.read(CoreStr.pushSnoozeSeconds), '259189');
-    expect(core.read(CoreStr.organicRecheckSeconds), '8');
+    expect(core.read(CoreStr.organicRecheckSeconds), '3');
   });
 }

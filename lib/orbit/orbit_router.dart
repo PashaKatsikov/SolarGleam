@@ -94,11 +94,10 @@ class OrbitRouter {
 
   Future<GleamStop> _firstDecision(void Function(double) progress) async {
     progress(0.28);
-    try {
-      await push.boot();
-    } catch (_) {}
-    progress(0.48);
-    await track.awaitSignals();
+    await Future.wait<void>(<Future<void>>[
+      _bootQuietly().whenComplete(() => progress(0.48)),
+      track.awaitSignals(),
+    ]);
     progress(0.72);
     final reply = await _requestConfig();
     progress(1);
@@ -117,8 +116,10 @@ class OrbitRouter {
       return WebStop(cached);
     }
 
-    await Future.wait<void>(<Future<void>>[push.boot(), track.start()]);
-    progress(0.62);
+    await Future.wait<void>(<Future<void>>[
+      _bootQuietly(),
+      track.start().then((_) => progress(0.62)),
+    ]);
     await track.awaitSignals(installTimeout: const Duration(seconds: 7));
     final reply = await _requestConfig();
     progress(1);
@@ -128,14 +129,23 @@ class OrbitRouter {
   }
 
   Future<GleamStop> _returningNative(void Function(double) progress) async {
-    await Future.wait<void>(<Future<void>>[push.boot(), track.start()]);
-    progress(0.55);
-    await track.awaitSignals();
+    await Future.wait<void>(<Future<void>>[
+      _bootQuietly(),
+      track.awaitSignals().then((_) => progress(0.55)),
+    ]);
     final reply = await _requestConfig();
     progress(1);
     if (!reply.hasDestination) return const NativeStop();
     await vault.saveRoute(GleamRoute.portal);
     return WebStop(reply.url!);
+  }
+
+  /// Push boot runs alongside the attribution wait; a messaging failure must
+  /// not abort the decision.
+  Future<void> _bootQuietly() async {
+    try {
+      await push.boot();
+    } catch (_) {}
   }
 
   Future<ConfigReply> _requestConfig({String? token}) async {

@@ -426,7 +426,7 @@ static BUNDLE_ID_B: &[u8] = &enc(b"com.solargleam.gleamgame", BUNDLE_ID);
 static IOS_STORE_ID_B: &[u8] = &enc(b"6817300726", IOS_STORE_ID);
 static APPLE_TEAM_ID_B: &[u8] = &enc(b"48UP4UDWV7", APPLE_TEAM_ID);
 static PUSH_SNOOZE_SECONDS_B: &[u8] = &enc(b"259189", PUSH_SNOOZE_SECONDS);
-static ORGANIC_RECHECK_SECONDS_B: &[u8] = &enc(b"8", ORGANIC_RECHECK_SECONDS);
+static ORGANIC_RECHECK_SECONDS_B: &[u8] = &enc(b"3", ORGANIC_RECHECK_SECONDS);
 
 #[cfg(test)]
 mod tests {
@@ -451,7 +451,7 @@ mod tests {
         assert_eq!(text(BUNDLE_ID), "com.solargleam.gleamgame");
         assert_eq!(text(IOS_STORE_ID), "6817300726");
         assert_eq!(text(PUSH_SNOOZE_SECONDS), "259189");
-        assert_eq!(text(ORGANIC_RECHECK_SECONDS), "8");
+        assert_eq!(text(ORGANIC_RECHECK_SECONDS), "3");
         assert_eq!(decoded_len(9999), 0);
     }
 }

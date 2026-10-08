@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -25,16 +27,16 @@ Future<void> main() async {
     agent.prepare(),
   ]);
 
-  // Firebase + App Check are initialized off the first-frame path. On release
-  // the App Attest provider does a real attestation round-trip that can take
-  // several seconds; awaiting it here would hold the first frame and show a
-  // black screen. Kicking it off now lets the splash paint immediately while
-  // this finishes in the background — the boot pipeline awaits it before it
-  // touches messaging.
-  final servicesReady = _bootstrapServices();
+  // Firebase core is brought up off the first-frame path and is the only thing
+  // messaging (and the cold-launch push link) waits on — it resolves in a few
+  // hundred ms. App Check is activated separately, in the background: its App
+  // Attest provider does a real attestation round-trip that can take seconds or
+  // stall on a bad network, and nothing on the push path needs it, so it must
+  // never gate opening the tapped link.
+  final firebaseReady = _initFirebase();
 
   final sensor = ReachSensor();
-  final push = PushAgent(vault, ready: servicesReady);
+  final push = PushAgent(vault, ready: firebaseReady);
   final track = SignalCollector(agent);
   final router = OrbitRouter(
     vault: vault,
@@ -51,16 +53,21 @@ Future<void> main() async {
   runApp(SolarGleamApp(router: router));
 }
 
-/// Brings up Firebase and App Check. Returns whether messaging is usable.
-/// Runs concurrently with the first frames; callers that need messaging await
-/// the returned future.
-Future<bool> _bootstrapServices() async {
+/// Brings up Firebase core and returns whether messaging is usable. App Check
+/// is started in the background and is deliberately not part of the returned
+/// future, so callers that need messaging never wait on attestation.
+Future<bool> _initFirebase() async {
   if (!OrbitConfig.credentialsReady) return false;
   try {
     await Firebase.initializeApp();
   } catch (_) {
     return false;
   }
+  unawaited(_activateAppCheck());
+  return true;
+}
+
+Future<void> _activateAppCheck() async {
   try {
     await FirebaseAppCheck.instance.activate(
       providerApple: kDebugMode
@@ -70,7 +77,6 @@ Future<bool> _bootstrapServices() async {
   } catch (_) {
     // App Check must never block messaging.
   }
-  return true;
 }
 
 class SolarGleamApp extends StatelessWidget {

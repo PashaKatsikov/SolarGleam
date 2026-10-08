@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/services.dart';
 
 import 'gleam_vault.dart';
 
@@ -28,6 +29,12 @@ class PushAgent {
   /// Destination from a tap received before anyone was listening. One-shot.
   String? _pendingDestination;
 
+  static const MethodChannel _launchTap = MethodChannel('sg.l0');
+
+  /// Message id of the cold-launch tap, so FCM re-delivering the same tap as
+  /// `onMessageOpenedApp` does not load it a second time.
+  String? _coldMessageId;
+
   void Function(String url)? _onDestination;
   void Function(String token)? onTokenChanged;
 
@@ -46,15 +53,17 @@ class PushAgent {
 
   void Function(String url)? get onDestination => _onDestination;
 
+  /// Messaging is usable only once Firebase core (kicked off at startup, off
+  /// the first-frame path) is up. Callers await this instead of a plain flag
+  /// so nothing touches Firebase before it is ready.
+  Future<bool> _isReady() async => _enabled ??= await _ready;
+
   /// Fast path for routing: the destination of the notification that
   /// cold-launched the app (terminated → tapped), or null. Does not wait for
   /// the full [boot]; the URL is returned, never stored.
-  /// Messaging is usable only once the Firebase bootstrap (kicked off at
-  /// startup, off the first-frame path) has finished. Callers await this
-  /// instead of a plain flag so nothing touches Firebase before it is ready.
-  Future<bool> _isReady() async => _enabled ??= await _ready;
-
   Future<String?> coldTapDestination() async {
+    final native = await _takeLaunchTap();
+    if (native != null) return native;
     if (!await _isReady()) return null;
     final messaging = _messaging ??= FirebaseMessaging.instance;
     try {
@@ -62,7 +71,23 @@ class PushAgent {
         const Duration(seconds: 4),
         onTimeout: () => null,
       );
-      return initial == null ? null : _extract(initial.data);
+      if (initial == null) return null;
+      _coldMessageId = initial.messageId;
+      return _extract(initial.data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The launch tap captured natively before the engine started. Needs no
+  /// Firebase, so it is available on the very first call.
+  Future<String?> _takeLaunchTap() async {
+    try {
+      final raw = await _launchTap.invokeMapMethod<String, dynamic>('take');
+      if (raw == null) return null;
+      final url = _extract(raw);
+      if (url != null) _coldMessageId = raw['gcm.message_id'] as String?;
+      return url;
     } catch (_) {
       return null;
     }
@@ -86,6 +111,8 @@ class PushAgent {
     });
     // A tap while the app is backgrounded brings the destination here.
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final id = message.messageId;
+      if (id != null && id == _coldMessageId) return;
       final url = _extract(message.data);
       if (url == null) return;
       _deliverTap(url);

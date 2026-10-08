@@ -1,16 +1,17 @@
 import Flutter
 import UIKit
+import UserNotifications
 
-/// The cold-launch push destination is no longer captured or persisted here.
-/// A tapped notification is resolved on the Dart side through FCM
-/// (`FirebaseMessaging.getInitialMessage`) and loaded straight into the portal
-/// web view, so the link is never written to disk.
 class SceneDelegate: FlutterSceneDelegate {
   override func scene(
     _ scene: UIScene,
     willConnectTo session: UISceneSession,
     options connectionOptions: UIScene.ConnectionOptions
   ) {
+    // Must run before super: the engine (and its plugins) is created there.
+    if let response = connectionOptions.notificationResponse {
+      LaunchTap.capture(response.notification.request.content.userInfo)
+    }
     super.scene(scene, willConnectTo: session, options: connectionOptions)
   }
 }
